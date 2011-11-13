@@ -17,7 +17,7 @@ bool print_person(pb_istream_t *stream)
     int i;
     Person person;
     
-    if (!pb_decode(stream, Person_fields, &person))
+    if (!pb_decode(stream, Person_msg, &person))
         return false;
     
     /* Now the decoding is done, rest is just to print stuff out. */

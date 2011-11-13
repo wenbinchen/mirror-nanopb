@@ -58,7 +58,7 @@ int main()
     testmessage.submsg.fixed32value.funcs.encode = &encode_fixed32;
     testmessage.submsg.fixed64value.funcs.encode = &encode_fixed64;
     
-    if (!pb_encode(&stream, TestMessage_fields, &testmessage))
+    if (!pb_encode(&stream, TestMessage_msg, &testmessage))
         return 1;
     
     if (fwrite(buffer, stream.bytes_written, 1, stdout) != 1)

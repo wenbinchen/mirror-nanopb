@@ -40,9 +40,9 @@ bool pb_read(pb_istream_t *stream, uint8_t *buf, size_t count);
 
 /* Decode from stream to destination struct.
  * Returns true on success, false on any failure.
- * The actual struct pointed to by dest must match the description in fields.
+ * The actual struct pointed to by dest must match the description in msg.
  */
-bool pb_decode(pb_istream_t *stream, const pb_field_t fields[], void *dest_struct);
+bool pb_decode(pb_istream_t *stream, const pb_message_t *msg, void *dest_struct);
 
 /* --- Helper functions ---
  * You may want to use these from your caller or callbacks.

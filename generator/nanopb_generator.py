@@ -227,7 +227,7 @@ class Field:
             result += ' 0,'
         
         if self.ltype == 'PB_LTYPE_SUBMESSAGE':
-            result += '\n    &%s_fields}' % self.submsgname
+            result += '\n    %s_msg}' % self.submsgname
         elif self.default is None or self.htype == 'PB_HTYPE_CALLBACK':
             result += ' 0}'
         else:
@@ -268,20 +268,24 @@ class Message:
                 result += default + '\n'
         return result
 
-    def fields_declaration(self):
-        result = 'extern const pb_field_t %s_fields[%d];' % (self.name, len(self.fields) + 1)
+    def message_declaration(self):
+        result = 'typedef PB_MSG_STRUCT(%d) %s_msg_t;\n' % (len(self.fields), self.name)
+        result += 'extern const %s_msg_t %s_real_msg;\n' % (self.name, self.name)
+        result += '#define %s_msg ((const pb_message_t*)&%s_real_msg)\n' % (self.name, self.name)
         return result
 
-    def fields_definition(self):
-        result = 'const pb_field_t %s_fields[%d] = {\n' % (self.name, len(self.fields) + 1)
+    def message_definition(self):
+        result = 'const %s_msg_t %s_real_msg = {\n' % (self.name, self.name)
+        result += '    %d,\n' % len(self.fields)
         
+        result += '    {\n\n'
         prev = None
         for field in self.ordered_fields:
             result += field.pb_field_t(prev)
             result += ',\n\n'
             prev = field.name
         
-        result += '    PB_LAST_FIELD\n};'
+        result += '    }\n};'
         return result
 
 def iterate_messages(desc, names = Names()):
@@ -378,7 +382,7 @@ def generate_header(headername, enums, messages):
     
     yield '/* Struct field encoding specification for nanopb */\n'
     for msg in messages:
-        yield msg.fields_declaration() + '\n'
+        yield msg.message_declaration() + '\n'
     
     yield '\n#endif\n'
 
@@ -394,7 +398,7 @@ def generate_source(headername, enums, messages):
     yield '\n\n'
     
     for msg in messages:
-        yield msg.fields_definition() + '\n\n'
+        yield msg.message_definition() + '\n\n'
 
 if __name__ == '__main__':
     import sys

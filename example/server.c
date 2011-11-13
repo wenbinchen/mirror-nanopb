@@ -53,7 +53,7 @@ void handle_connection(int connfd)
     pb_ostream_t output = pb_ostream_from_socket(connfd);
     DIR *directory;
     
-    if (!pb_decode(&input, ListFilesRequest_fields, &request))
+    if (!pb_decode(&input, ListFilesRequest_msg, &request))
     {
         printf("Decoding failed.\n");
         return;
@@ -78,7 +78,7 @@ void handle_connection(int connfd)
         response.file.arg = directory;
     }
     
-    if (!pb_encode(&output, ListFilesResponse_fields, &response))
+    if (!pb_encode(&output, ListFilesResponse_msg, &response))
     {
         printf("Encoding failed.\n");
     }

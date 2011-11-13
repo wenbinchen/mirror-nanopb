@@ -112,6 +112,19 @@ typedef struct {
     uint8_t bytes[1];
 } pb_bytes_array_t;
 
+/* This macro is define the type of a structure for a message with N
+ * fields.
+ */
+#define PB_MSG_STRUCT(N) struct {               \
+        unsigned int field_count;               \
+        pb_field_t fields[N];                   \
+    }
+
+/* This is the visible type for generated message structures.
+ * The actual number of fields at the end will vary by message type.
+ */
+typedef PB_MSG_STRUCT(1) pb_message_t;
+
 /* This structure is used for giving the callback function.
  * It is stored in the message structure and filled in by the method that
  * calls pb_decode.

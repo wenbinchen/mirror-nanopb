@@ -27,7 +27,7 @@ bool printfile_callback(pb_istream_t *stream, const pb_field_t *field, void *arg
 {
     FileInfo fileinfo;
     
-    if (!pb_decode(stream, FileInfo_fields, &fileinfo))
+    if (!pb_decode(stream, FileInfo_msg, &fileinfo))
         return false;
     
     printf("%-10lld %s\n", fileinfo.inode, fileinfo.name);
@@ -59,7 +59,7 @@ bool listdir(int fd, char *path)
         strcpy(request.path, path);
     }
     
-    if (!pb_encode(&output, ListFilesRequest_fields, &request))
+    if (!pb_encode(&output, ListFilesRequest_msg, &request))
     {
         fprintf(stderr, "Encoding failed.\n");
         return false;
@@ -70,7 +70,7 @@ bool listdir(int fd, char *path)
     
     response.file.funcs.decode = &printfile_callback;
     
-    if (!pb_decode(&input, ListFilesResponse_fields, &response))
+    if (!pb_decode(&input, ListFilesResponse_msg, &response))
     {
         fprintf(stderr, "Decoding failed.\n");
         return false;

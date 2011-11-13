@@ -84,7 +84,7 @@ int main()
     testmessage.fixed64value.funcs.decode = &print_fixed64;
     testmessage.fixed64value.arg = "fixed64value: %lld\n";
     
-    if (!pb_decode(&stream, TestMessage_fields, &testmessage))
+    if (!pb_decode(&stream, TestMessage_msg, &testmessage))
         return 1;
     
     return 0;

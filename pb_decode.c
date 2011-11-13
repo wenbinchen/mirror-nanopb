@@ -185,7 +185,7 @@ static bool checkreturn make_string_substream(pb_istream_t *stream, pb_istream_t
 
 /* Iterator for pb_field_t list */
 typedef struct {
-    const pb_field_t *start;
+    const pb_message_t *msg;
     const pb_field_t *current;
     int field_index;
     void *dest_struct;
@@ -193,9 +193,10 @@ typedef struct {
     void *pSize;
 } pb_field_iterator_t;
 
-static void pb_field_init(pb_field_iterator_t *iter, const pb_field_t *fields, void *dest_struct)
+static void pb_field_init(pb_field_iterator_t *iter, const pb_message_t *msg, void *dest_struct)
 {
-    iter->start = iter->current = fields;
+    iter->msg = msg;
+    iter->current = msg->fields;
     iter->field_index = 0;
     iter->pData = (char*)dest_struct + iter->current->data_offset;
     iter->pSize = (char*)iter->pData + iter->current->size_offset;
@@ -212,9 +213,9 @@ static bool pb_field_next(pb_field_iterator_t *iter)
     
     iter->current++;
     iter->field_index++;
-    if (iter->current->tag == 0)
+    if (iter->field_index >= iter->msg->field_count)
     {
-        iter->current = iter->start;
+        iter->current = &iter->msg->fields[0];
         iter->field_index = 0;
         iter->pData = iter->dest_struct;
         prev_size = 0;
@@ -334,15 +335,15 @@ static bool checkreturn decode_field(pb_istream_t *stream, pb_wire_type_t wire_t
 }
 
 /* Initialize message fields to default values, recursively */
-static void pb_message_set_to_defaults(const pb_field_t fields[], void *dest_struct)
+static void pb_message_set_to_defaults(const pb_message_t *msg, void *dest_struct)
 {
     pb_field_iterator_t iter;
-    pb_field_init(&iter, fields, dest_struct);
+    pb_field_init(&iter, msg, dest_struct);
     
     /* Initialize size/has fields and apply default values */
     do
     {
-        if (iter.current->tag == 0)
+        if (iter.field_index >= msg->field_count)
             continue;
         
         /* Initialize the size field for optional/repeated fields to 0. */
@@ -380,15 +381,15 @@ static void pb_message_set_to_defaults(const pb_field_t fields[], void *dest_str
  * Decode all fields *
  *********************/
 
-bool checkreturn pb_decode(pb_istream_t *stream, const pb_field_t fields[], void *dest_struct)
+bool checkreturn pb_decode(pb_istream_t *stream, const pb_message_t *msg, void *dest_struct)
 {
     uint32_t fields_seen = 0; /* Used to check for required fields */
     pb_field_iterator_t iter;
-    int i;
+    unsigned int i;
     
-    pb_message_set_to_defaults(fields, dest_struct);
+    pb_message_set_to_defaults(msg, dest_struct);
     
-    pb_field_init(&iter, fields, dest_struct);
+    pb_field_init(&iter, msg, dest_struct);
     
     while (stream->bytes_left)
     {
@@ -424,9 +425,9 @@ bool checkreturn pb_decode(pb_istream_t *stream, const pb_field_t fields[], void
     }
     
     /* Check that all required fields (mod 31) were present. */
-    for (i = 0; fields[i].tag != 0; i++)
+    for (i = 0; i < msg->field_count; i++)
     {
-        if (PB_HTYPE(fields[i].type) == PB_HTYPE_REQUIRED &&
+        if (PB_HTYPE(msg->fields[i].type) == PB_HTYPE_REQUIRED &&
             !(fields_seen & (1 << (i & 31))))
         {
             return false;
@@ -537,7 +538,7 @@ bool checkreturn pb_dec_submessage(pb_istream_t *stream, const pb_field_t *field
     if (field->ptr == NULL)
         return false;
     
-    status = pb_decode(&substream, (pb_field_t*)field->ptr, dest);
+    status = pb_decode(&substream, (const pb_message_t*)field->ptr, dest);
     stream->state = substream.state;
     return status;
 }

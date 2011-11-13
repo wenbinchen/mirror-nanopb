@@ -39,10 +39,10 @@ bool pb_write(pb_ostream_t *stream, const uint8_t *buf, size_t count);
 
 /* Encode struct to given output stream.
  * Returns true on success, false on any failure.
- * The actual struct pointed to by src_struct must match the description in fields.
+ * The actual struct pointed to by src_struct must match the description in msg.
  * All required fields in the struct are assumed to have been filled in.
  */
-bool pb_encode(pb_ostream_t *stream, const pb_field_t fields[], const void *src_struct);
+bool pb_encode(pb_ostream_t *stream, const pb_message_t *msg, const void *src_struct);
 
 /* --- Helper functions ---
  * You may want to use these from your caller or callbacks.

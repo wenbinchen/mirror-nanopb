@@ -24,7 +24,7 @@ int main()
     pb_ostream_t stream = {&streamcallback, stdout, SIZE_MAX, 0};
     
     /* Now encode it and check if we succeeded. */
-    if (pb_encode(&stream, Person_fields, &person))
+    if (pb_encode(&stream, Person_msg, &person))
         return 0; /* Success */
     else
         return 1; /* Failure */

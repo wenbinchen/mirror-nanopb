@@ -193,13 +193,13 @@ int main()
         IntegerArray dest;
         
         COMMENT("Testing pb_decode with repeated int32 field")
-        TEST((s = S(""), pb_decode(&s, IntegerArray_fields, &dest) && dest.data_count == 0))
-        TEST((s = S("\x08\x01\x08\x02"), pb_decode(&s, IntegerArray_fields, &dest)
+        TEST((s = S(""), pb_decode(&s, IntegerArray_msg, &dest) && dest.data_count == 0))
+        TEST((s = S("\x08\x01\x08\x02"), pb_decode(&s, IntegerArray_msg, &dest)
              && dest.data_count == 2 && dest.data[0] == 1 && dest.data[1] == 2))
         s = S("\x08\x01\x08\x02\x08\x03\x08\x04\x08\x05\x08\x06\x08\x07\x08\x08\x08\x09\x08\x0A");
-        TEST(pb_decode(&s, IntegerArray_fields, &dest) && dest.data_count == 10 && dest.data[9] == 10)
+        TEST(pb_decode(&s, IntegerArray_msg, &dest) && dest.data_count == 10 && dest.data[9] == 10)
         s = S("\x08\x01\x08\x02\x08\x03\x08\x04\x08\x05\x08\x06\x08\x07\x08\x08\x08\x09\x08\x0A\x08\x0B");
-        TEST(!pb_decode(&s, IntegerArray_fields, &dest))
+        TEST(!pb_decode(&s, IntegerArray_msg, &dest))
     }
     
     {
@@ -207,17 +207,17 @@ int main()
         IntegerArray dest;
         
         COMMENT("Testing pb_decode with packed int32 field")
-        TEST((s = S("\x0A\x00"), pb_decode(&s, IntegerArray_fields, &dest)
+        TEST((s = S("\x0A\x00"), pb_decode(&s, IntegerArray_msg, &dest)
             && dest.data_count == 0))
-        TEST((s = S("\x0A\x01\x01"), pb_decode(&s, IntegerArray_fields, &dest)
+        TEST((s = S("\x0A\x01\x01"), pb_decode(&s, IntegerArray_msg, &dest)
             && dest.data_count == 1 && dest.data[0] == 1))
-        TEST((s = S("\x0A\x0A\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A"), pb_decode(&s, IntegerArray_fields, &dest)
+        TEST((s = S("\x0A\x0A\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A"), pb_decode(&s, IntegerArray_msg, &dest)
             && dest.data_count == 10 && dest.data[0] == 1 && dest.data[9] == 10))
-        TEST((s = S("\x0A\x0B\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B"), !pb_decode(&s, IntegerArray_fields, &dest)))
+        TEST((s = S("\x0A\x0B\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B"), !pb_decode(&s, IntegerArray_msg, &dest)))
         
         /* Test invalid wire data */
-        TEST((s = S("\x0A\xFF"), !pb_decode(&s, IntegerArray_fields, &dest)))
-        TEST((s = S("\x0A\x01"), !pb_decode(&s, IntegerArray_fields, &dest)))
+        TEST((s = S("\x0A\xFF"), !pb_decode(&s, IntegerArray_msg, &dest)))
+        TEST((s = S("\x0A\x01"), !pb_decode(&s, IntegerArray_msg, &dest)))
     }
     
     {
@@ -225,14 +225,14 @@ int main()
         IntegerArray dest;
         
         COMMENT("Testing pb_decode with unknown fields")
-        TEST((s = S("\x18\x0F\x08\x01"), pb_decode(&s, IntegerArray_fields, &dest)
+        TEST((s = S("\x18\x0F\x08\x01"), pb_decode(&s, IntegerArray_msg, &dest)
             && dest.data_count == 1 && dest.data[0] == 1))
-        TEST((s = S("\x19\x00\x00\x00\x00\x00\x00\x00\x00\x08\x01"), pb_decode(&s, IntegerArray_fields, &dest)
+        TEST((s = S("\x19\x00\x00\x00\x00\x00\x00\x00\x00\x08\x01"), pb_decode(&s, IntegerArray_msg, &dest)
             && dest.data_count == 1 && dest.data[0] == 1))
-        TEST((s = S("\x1A\x00\x08\x01"), pb_decode(&s, IntegerArray_fields, &dest)
+        TEST((s = S("\x1A\x00\x08\x01"), pb_decode(&s, IntegerArray_msg, &dest)
             && dest.data_count == 1 && dest.data[0] == 1))
-        TEST((s = S("\x1B\x08\x01"), !pb_decode(&s, IntegerArray_fields, &dest)))
-        TEST((s = S("\x1D\x00\x00\x00\x00\x08\x01"), pb_decode(&s, IntegerArray_fields, &dest)
+        TEST((s = S("\x1B\x08\x01"), !pb_decode(&s, IntegerArray_msg, &dest)))
+        TEST((s = S("\x1D\x00\x00\x00\x00\x08\x01"), pb_decode(&s, IntegerArray_msg, &dest)
             && dest.data_count == 1 && dest.data[0] == 1))
     }
     
@@ -246,25 +246,25 @@ int main()
         COMMENT("Testing pb_decode with callbacks")
         /* Single varint */
         ref.size = 1; ref.bytes[0] = 0x55;
-        TEST((s = S("\x08\x55"), pb_decode(&s, CallbackArray_fields, &dest)))
+        TEST((s = S("\x08\x55"), pb_decode(&s, CallbackArray_msg, &dest)))
         /* Packed varint */
         ref.size = 3; ref.bytes[0] = ref.bytes[1] = ref.bytes[2] = 0x55;
-        TEST((s = S("\x0A\x03\x55\x55\x55"), pb_decode(&s, CallbackArray_fields, &dest)))
+        TEST((s = S("\x0A\x03\x55\x55\x55"), pb_decode(&s, CallbackArray_msg, &dest)))
         /* Packed varint with loop */
         ref.size = 1; ref.bytes[0] = 0x55;
-        TEST((s = S("\x0A\x03\x55\x55\x55"), pb_decode(&s, CallbackArray_fields, &dest)))
+        TEST((s = S("\x0A\x03\x55\x55\x55"), pb_decode(&s, CallbackArray_msg, &dest)))
         /* Single fixed32 */
         ref.size = 4; ref.bytes[0] = ref.bytes[1] = ref.bytes[2] = ref.bytes[3] = 0xAA;
-        TEST((s = S("\x0D\xAA\xAA\xAA\xAA"), pb_decode(&s, CallbackArray_fields, &dest)))
+        TEST((s = S("\x0D\xAA\xAA\xAA\xAA"), pb_decode(&s, CallbackArray_msg, &dest)))
         /* Single fixed64 */
         ref.size = 8; memset(ref.bytes, 0xAA, 8);
-        TEST((s = S("\x09\xAA\xAA\xAA\xAA\xAA\xAA\xAA\xAA"), pb_decode(&s, CallbackArray_fields, &dest)))
+        TEST((s = S("\x09\xAA\xAA\xAA\xAA\xAA\xAA\xAA\xAA"), pb_decode(&s, CallbackArray_msg, &dest)))
         /* Unsupported field type */
-        TEST((s = S("\x0B\x00"), !pb_decode(&s, CallbackArray_fields, &dest)))
+        TEST((s = S("\x0B\x00"), !pb_decode(&s, CallbackArray_msg, &dest)))
         
         /* Just make sure that our test function works */
         ref.size = 1; ref.bytes[0] = 0x56;
-        TEST((s = S("\x08\x55"), !pb_decode(&s, CallbackArray_fields, &dest)))
+        TEST((s = S("\x08\x55"), !pb_decode(&s, CallbackArray_msg, &dest)))
     }
     
     {
@@ -272,11 +272,11 @@ int main()
         IntegerArray dest;
         
         COMMENT("Testing pb_decode message termination")
-        TEST((s = S(""), pb_decode(&s, IntegerArray_fields, &dest)))
-        TEST((s = S("\x00"), pb_decode(&s, IntegerArray_fields, &dest)))
-        TEST((s = S("\x08\x01"), pb_decode(&s, IntegerArray_fields, &dest)))
-        TEST((s = S("\x08\x01\x00"), pb_decode(&s, IntegerArray_fields, &dest)))
-        TEST((s = S("\x08"), !pb_decode(&s, IntegerArray_fields, &dest)))
+        TEST((s = S(""), pb_decode(&s, IntegerArray_msg, &dest)))
+        TEST((s = S("\x00"), pb_decode(&s, IntegerArray_msg, &dest)))
+        TEST((s = S("\x08\x01"), pb_decode(&s, IntegerArray_msg, &dest)))
+        TEST((s = S("\x08\x01\x00"), pb_decode(&s, IntegerArray_msg, &dest)))
+        TEST((s = S("\x08"), !pb_decode(&s, IntegerArray_msg, &dest)))
     }
     
     if (status != 0)
