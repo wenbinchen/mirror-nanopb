@@ -13,9 +13,9 @@ pb_type_t
 ---------
 Defines the encoder/decoder behaviour that should be used for a field. ::
 
-    typedef enum { ... } pb_type_t;
+    typedef uint8_t pb_type_t;
 
-The low-order byte of the enumeration values defines the function that can be used for encoding and decoding the field data:
+The low-order nibble of the enumeration values defines the function that can be used for encoding and decoding the field data:
 
 ==================== ===== ================================================
 LTYPE identifier     Value Storage format
@@ -28,7 +28,7 @@ PB_LTYPE_STRING      0x04  Null-terminated string.
 PB_LTYPE_SUBMESSAGE  0x05  Submessage structure.
 ==================== ===== ================================================
 
-The high-order byte defines whether the field is required, optional, repeated or callback:
+The high-order nibble defines whether the field is required, optional, repeated or callback:
 
 ==================== ===== ================================================
 HTYPE identifier     Value Field handling
