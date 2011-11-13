@@ -34,8 +34,8 @@ The high-order nibble defines whether the field is required, optional, repeated 
 HTYPE identifier     Value Field handling
 ==================== ===== ================================================
 PB_HTYPE_REQUIRED    0x00  Verify that field exists in decoded message.
-PB_HTYPE_OPTIONAL    0x10  Use separate *has_<field>* boolean to specify
-                           whether the field is present.
+PB_HTYPE_OPTIONAL    0x10  Use the structure's *has_fields* bit array to
+                           specify whether the field is present.
 PB_HTYPE_ARRAY       0x20  A repeated field with preallocated array.
                            Separate *<field>_count* for number of items.
 PB_HTYPE_CALLBACK    0x30  A field with dynamic storage size, data is
@@ -61,7 +61,7 @@ Describes a single structure field with memory position in relation to others. T
 :tag:           Tag number of the field or 0 to terminate a list of fields.
 :type:          LTYPE and HTYPE of the field.
 :data_offset:   Offset of field data, relative to the end of the previous field.
-:size_offset:   Offset of *bool* flag for optional fields or *size_t* count for arrays, relative to field data.
+:size_offset:   Offset of *size_t* count for arrays, relative to field data.
 :data_size:     Size of a single data entry, in bytes. For PB_LTYPE_BYTES, the size of the byte array inside the containing structure. For PB_HTYPE_CALLBACK, size of the C data type if known.
 :array_size:    Maximum number of entries in an array, if it is an array type.
 :ptr:           Pointer to default value for optional fields, or to submessage description for PB_LTYPE_SUBMESSAGE.
@@ -366,9 +366,7 @@ In Protocol Buffers binary format, EOF is only allowed between fields. If it hap
 
 In addition to EOF, the pb_decode implementation supports terminating a message with a 0 byte. This is compatible with the official Protocol Buffers because 0 is never a valid field tag.
 
-For optional fields, this function applies the default value and sets *has_<field>* to false if the field is not present.
-
-Because of memory concerns, the detection of missing required fields is not perfect if the structure contains more than 32 fields.
+For optional fields, this function applies the default value and clears the corresponding bit in *has_fields* if the field is not present.
 
 .. sidebar:: Field decoders
     

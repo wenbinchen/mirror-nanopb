@@ -17,9 +17,11 @@ bool streamcallback(pb_ostream_t *stream, const uint8_t *buf, size_t count)
 int main()
 {
     /* Initialize the structure with constants */
-    Person person = {"Test Person 99", 99, true, "test@person.com",
-        1, {{"555-12345678", true, Person_PhoneType_MOBILE}}};
-    
+    Person person = {{0}, "Test Person 99", 99, "test@person.com",
+        1, {{{0}, "555-12345678", Person_PhoneType_MOBILE}}};
+    Person_set(person, email);
+    Person_PhoneNumber_set(person.phone[0], type);
+
     /* Prepare the stream, output goes directly to stdout */
     pb_ostream_t stream = {&streamcallback, stdout, SIZE_MAX, 0};
     

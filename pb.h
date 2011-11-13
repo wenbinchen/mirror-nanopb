@@ -125,6 +125,22 @@ typedef struct {
  */
 typedef PB_MSG_STRUCT(1) pb_message_t;
 
+/* These macros are used to manipulate the has_fields array in
+ * generated messages.
+ */
+#define PB_FIELD_INDEX(TYPE, FIELD) TYPE ## _ ## FIELD ## _index
+#define PB_FIELD_BYTE(TYPE, FIELD) (PB_FIELD_INDEX(TYPE, FIELD) / 8)
+#define PB_FIELD_MASK(TYPE, FIELD) (1 << (PB_FIELD_INDEX(TYPE, FIELD) & 7))
+#define PB_HAS_FIELD(STRUCT, TYPE, FIELD) \
+    (((STRUCT).has_fields[PB_FIELD_BYTE(TYPE, FIELD)]   \
+      & PB_FIELD_MASK(TYPE, FIELD)) != 0)
+#define PB_SET_FIELD(STRUCT, TYPE, FIELD) \
+    ((STRUCT).has_fields[PB_FIELD_BYTE(TYPE, FIELD)]    \
+     |= PB_FIELD_MASK(TYPE, FIELD))
+#define PB_CLEAR_FIELD(STRUCT, TYPE, FIELD) \
+    ((STRUCT).has_fields[PB_FIELD_BYTE(TYPE, FIELD)]    \
+     &= ~PB_FIELD_MASK(TYPE, FIELD))
+
 /* This structure is used for giving the callback function.
  * It is stored in the message structure and filled in by the method that
  * calls pb_decode.

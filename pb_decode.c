@@ -251,10 +251,7 @@ static bool checkreturn decode_field(pb_istream_t *stream, pb_wire_type_t wire_t
     switch (PB_HTYPE(iter->current->type))
     {
         case PB_HTYPE_REQUIRED:
-            return func(stream, iter->current, iter->pData);
-            
         case PB_HTYPE_OPTIONAL:
-            *(bool*)iter->pSize = true;
             return func(stream, iter->current, iter->pData);
     
         case PB_HTYPE_ARRAY:
@@ -340,18 +337,17 @@ static void pb_message_set_to_defaults(const pb_message_t *msg, void *dest_struc
     pb_field_iterator_t iter;
     pb_field_init(&iter, msg, dest_struct);
     
+    /* Initialize the has_fields array to zero. */
+    memset(dest_struct, 0, (msg->field_count + 7) / 8);
+
     /* Initialize size/has fields and apply default values */
     do
     {
         if (iter.field_index >= msg->field_count)
             continue;
         
-        /* Initialize the size field for optional/repeated fields to 0. */
-        if (PB_HTYPE(iter.current->type) == PB_HTYPE_OPTIONAL)
-        {
-            *(bool*)iter.pSize = false;
-        }
-        else if (PB_HTYPE(iter.current->type) == PB_HTYPE_ARRAY)
+        /* Initialize the size field for repeated fields to 0. */
+        if (PB_HTYPE(iter.current->type) == PB_HTYPE_ARRAY)
         {
             *(size_t*)iter.pSize = 0;
             continue; /* Array is empty, no need to initialize contents */
@@ -383,8 +379,8 @@ static void pb_message_set_to_defaults(const pb_message_t *msg, void *dest_struc
 
 bool checkreturn pb_decode(pb_istream_t *stream, const pb_message_t *msg, void *dest_struct)
 {
-    uint32_t fields_seen = 0; /* Used to check for required fields */
     pb_field_iterator_t iter;
+    char *has_fields = dest_struct;
     unsigned int i;
     
     pb_message_set_to_defaults(msg, dest_struct);
@@ -418,17 +414,17 @@ bool checkreturn pb_decode(pb_istream_t *stream, const pb_message_t *msg, void *
             continue;
         }
         
-        fields_seen |= 1 << (iter.field_index & 31);
+        has_fields[iter.field_index/8] |= 1 << iter.field_index%8;
             
         if (!decode_field(stream, wire_type, &iter))
             return false;
     }
     
-    /* Check that all required fields (mod 31) were present. */
+    /* Check that all required fields were present. */
     for (i = 0; i < msg->field_count; i++)
     {
         if (PB_HTYPE(msg->fields[i].type) == PB_HTYPE_REQUIRED &&
-            !(fields_seen & (1 << (i & 31))))
+            !(has_fields[i/8] & 1 << (i%8)))
         {
             return false;
         }

@@ -25,7 +25,7 @@ bool print_person(pb_istream_t *stream)
     printf("name: \"%s\"\n", person.name);
     printf("id: %d\n", person.id);
     
-    if (person.has_email)
+    if (Person_has(person, email))
         printf("email: \"%s\"\n", person.email);
     
     for (i = 0; i < person.phone_count; i++)

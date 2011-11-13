@@ -45,11 +45,11 @@ bool listdir(int fd, char *path)
     
     if (path == NULL)
     {
-        request.has_path = false;
+        ListFilesRequest_clear(request, path);
     }
     else
     {
-        request.has_path = true;
+        ListFilesRequest_set(request, path);
         if (strlen(path) + 1 > sizeof(request.path))
         {
             fprintf(stderr, "Too long path.\n");

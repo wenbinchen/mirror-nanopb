@@ -52,7 +52,7 @@ int main()
     testmessage.fixed32value.funcs.encode = &encode_fixed32;
     testmessage.fixed64value.funcs.encode = &encode_fixed64;
     
-    testmessage.has_submsg = true;
+    TestMessage_set(testmessage, submsg);
     testmessage.submsg.stringvalue.funcs.encode = &encode_string;
     testmessage.submsg.int32value.funcs.encode = &encode_int32;
     testmessage.submsg.fixed32value.funcs.encode = &encode_fixed32;

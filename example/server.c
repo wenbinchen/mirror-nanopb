@@ -67,13 +67,13 @@ void handle_connection(int connfd)
     {
         perror("opendir");
         
-        response.has_path_error = true;
+        ListFilesResponse_set(response, path_error);
         response.path_error = true;
         response.file.funcs.encode = NULL;
     }
     else
     {
-        response.has_path_error = false;
+        ListFilesResponse_clear(response, path_error);
         response.file.funcs.encode = &listdir_callback;
         response.file.arg = directory;
     }

@@ -250,14 +250,34 @@ generates these declarations and definitions for the structure *Person_PhoneNumb
     pb_membersize(Person_PhoneNumber, number), 0, 0},
 
     {2, PB_HTYPE_OPTIONAL | PB_LTYPE_VARINT,
-    pb_delta_end(Person_PhoneNumber, type, number),
-    pb_delta(Person_PhoneNumber, has_type, type),
+    pb_delta_end(Person_PhoneNumber, type, number), 0,
     pb_membersize(Person_PhoneNumber, type), 0,
     &Person_PhoneNumber_type_default},
 
     }
  };
 
+ #define Person_PhoneNumber_has(STRUCT, FIELD) PB_HAS_FIELD(STRUCT, Person_PhoneNumber, FIELD)
+ #define Person_PhoneNumber_set(STRUCT, FIELD) PB_SET_FIELD(STRUCT, Person_PhoneNumber, FIELD)
+ #define Person_PhoneNumber_clear(STRUCT, FIELD) PB_CLEAR_FIELD(STRUCT, Person_PhoneNumber, FIELD)
+ #define Person_PhoneNumber_number_index 0
+ #define Person_PhoneNumber_number_tag 1
+ #define Person_PhoneNumber_type_index 1
+ #define Person_PhoneNumber_type_tag 2
+
+Optional Fields
+===============
+
+The *has_fields* member of each generated structure is an array where
+each bit indicates the presence of the corresponding (optional) field.
+The generated header file provides helper macros to read and update
+that array; in the previous example, they are
+*Person_PhoneNumber_has*, *Person_PhoneNumber_set* and
+*Person_PhoneNumber_clear*.
+
+For convenience, *pb_encode* only checks these bits for optional
+fields.  *pb_decode* sets the corresponding bit for every field it
+decodes, whether the field is optional or not.
 
 Return values and error handling
 ================================

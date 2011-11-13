@@ -138,9 +138,7 @@ class Field:
         return cmp(self.tag, other.tag)
     
     def __str__(self):
-        if self.htype == 'PB_HTYPE_OPTIONAL':
-            result = '    bool has_' + self.name + ';\n'
-        elif self.htype == 'PB_HTYPE_ARRAY':
+        if self.htype == 'PB_HTYPE_ARRAY':
             result = '    size_t ' + self.name + '_count;\n'
         else:
             result = ''
@@ -207,9 +205,7 @@ class Field:
         else:
             result += '    pb_delta_end(%s, %s, %s),' % (self.struct_name, self.name, prev_field_name)
         
-        if self.htype == 'PB_HTYPE_OPTIONAL':
-            result += '\n    pb_delta(%s, has_%s, %s),' % (self.struct_name, self.name, self.name)
-        elif self.htype == 'PB_HTYPE_ARRAY':
+        if self.htype == 'PB_HTYPE_ARRAY':
             result += '\n    pb_delta(%s, %s_count, %s),' % (self.struct_name, self.name, self.name)
         else:
             result += ' 0,'
@@ -248,6 +244,7 @@ class Message:
     
     def __str__(self):
         result = 'typedef struct {\n'
+        result += '    uint8_t has_fields[%d];\n' % ((len(self.fields) + 7) / 8)
         result += '\n'.join([str(f) for f in self.ordered_fields])
         result += '\n} %s;' % self.name
         return result
@@ -286,6 +283,18 @@ class Message:
             prev = field.name
         
         result += '    }\n};'
+        return result
+
+    def field_numbers(self):
+        result = '#define %s_has(STRUCT, FIELD) PB_HAS_FIELD(STRUCT, %s, FIELD)\n' % (self.name, self.name)
+        result += '#define %s_set(STRUCT, FIELD) PB_SET_FIELD(STRUCT, %s, FIELD)\n' % (self.name, self.name)
+        result += '#define %s_clear(STRUCT, FIELD) PB_CLEAR_FIELD(STRUCT, %s, FIELD)\n' % (self.name, self.name)
+
+        i = 0
+        for field in self.ordered_fields:
+            result += '#define %s_%s_index %d\n' % (self.name, field.name, i)
+            result += '#define %s_%s_tag %d\n' % (self.name, field.name, field.tag)
+            i += 1
         return result
 
 def iterate_messages(desc, names = Names()):
@@ -383,7 +392,12 @@ def generate_header(headername, enums, messages):
     yield '/* Struct field encoding specification for nanopb */\n'
     for msg in messages:
         yield msg.message_declaration() + '\n'
+    yield '\n'
     
+    yield '/* Field indexes and tags */\n'
+    for msg in messages:
+        yield msg.field_numbers()
+
     yield '\n#endif\n'
 
 def generate_source(headername, enums, messages):

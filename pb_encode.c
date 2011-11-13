@@ -144,6 +144,7 @@ bool checkreturn pb_encode(pb_ostream_t *stream, const pb_message_t *msg, const 
 {
     const void *pData = src_struct;
     const void *pSize;
+    const char *has_fields = src_struct;
     unsigned int i;
     size_t prev_size = 0;
     
@@ -168,7 +169,7 @@ bool checkreturn pb_encode(pb_ostream_t *stream, const pb_message_t *msg, const 
                 break;
             
             case PB_HTYPE_OPTIONAL:
-                if (*(bool*)pSize)
+                if (has_fields[i/8] & (1 << i%8))
                 {
                     if (!pb_encode_tag_for_field(stream, field))
                         return false;

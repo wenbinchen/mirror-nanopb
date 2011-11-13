@@ -192,7 +192,7 @@ int main()
     {
         uint8_t buffer[10];
         pb_ostream_t s;
-        IntegerArray msg = {5, {1, 2, 3, 4, 5}};
+        IntegerArray msg = {{0}, 5, {1, 2, 3, 4, 5}};
         
         COMMENT("Test pb_encode with int32 array")
         
@@ -208,7 +208,7 @@ int main()
     {
         uint8_t buffer[10];
         pb_ostream_t s;
-        FloatArray msg = {1, {99.0f}};
+        FloatArray msg = {{0}, 1, {99.0f}};
         
         COMMENT("Test pb_encode with float array")
         
@@ -236,7 +236,7 @@ int main()
     {
         uint8_t buffer[10];
         pb_ostream_t s;
-        IntegerContainer msg = {{5, {1,2,3,4,5}}};
+        IntegerContainer msg = {{0}, {{0}, 5, {1,2,3,4,5}}};
         
         COMMENT("Test pb_encode with packed array in a submessage.")
         TEST(WRITES(pb_encode(&s, IntegerContainer_msg, &msg),
