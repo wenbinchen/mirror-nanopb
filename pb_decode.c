@@ -251,6 +251,11 @@ static bool checkreturn decode_field(pb_istream_t *stream, pb_wire_type_t wire_t
 {
     pb_decoder_t func = PB_DECODERS[PB_LTYPE(iter->current->type)];
     
+#ifndef MALLOC_HEADER
+    if (PB_POINTER(iter->current->type))
+        return false;
+#endif
+    
     switch (PB_HTYPE(iter->current->type))
     {
         case PB_HTYPE_REQUIRED:
@@ -590,9 +595,9 @@ bool checkreturn pb_dec_bytes(pb_istream_t *stream, const pb_field_t *field, voi
     if (x->size > field->data_size)
         return false;
     
+#ifdef MALLOC_HEADER
     if (PB_POINTER(field->type))
     {
-#ifdef MALLOC_HEADER
         pb_bytes_t *x2 = (pb_bytes_t*)dest;
         
         if (x2->alloced < x2->size)
@@ -605,10 +610,8 @@ bool checkreturn pb_dec_bytes(pb_istream_t *stream, const pb_field_t *field, voi
         }
         
         return pb_read(stream, x2->bytes, x2->size);
-#else
-        return false;
-#endif
     }
+#endif
     
     return pb_read(stream, x->bytes, x->size);
 }
@@ -623,19 +626,17 @@ bool checkreturn pb_dec_string(pb_istream_t *stream, const pb_field_t *field, vo
     if (size > field->data_size - 1)
         return false;
     
+#ifdef MALLOC_HEADER
     if (PB_POINTER(field->type))
     {
-#ifdef MALLOC_HEADER
         uint8_t *string = (uint8_t*)realloc(*(uint8_t**)dest, size + 1);
         if (!string)
             return false;
         
         *(uint8_t**)dest = string;
         dest = string;
-#else
-        return false;
-#endif
     }
+#endif
     
     status = pb_read(stream, (uint8_t*)dest, size);
     *((uint8_t*)dest + size) = 0;
@@ -656,9 +657,9 @@ bool checkreturn pb_dec_submessage(pb_istream_t *stream, const pb_field_t *field
     
     msg = (const pb_message_t*)field->ptr;
     
+#ifdef MALLOC_HEADER
     if (PB_POINTER(field->type))
     {
-#ifdef MALLOC_HEADER
         if (*(void**)dest == NULL)
         {
             void *object = calloc(1, msg->size);
@@ -670,10 +671,8 @@ bool checkreturn pb_dec_submessage(pb_istream_t *stream, const pb_field_t *field
         } else {
             dest = *(void**)dest;
         }
-#else
-        return false;
-#endif
     }
+#endif
     
     status = pb_decode(&substream, msg, dest);
     stream->state = substream.state;
