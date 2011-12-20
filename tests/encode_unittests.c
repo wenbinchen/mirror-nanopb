@@ -273,7 +273,7 @@ int main()
         uint8_t buffer[128];
         pb_ostream_t s;
         PointerContainer msg;
-        PointerContainer msg2;
+        DefaultContainer msg2;
         IntegerArray msg3;
         
         COMMENT("Test pb_encode with pointer fields.")
@@ -285,7 +285,7 @@ int main()
         msg.blob.bytes = (uint8_t*)"b";
         msg.submsg = &msg2;
         TEST(WRITES(pb_encode(&s, PointerContainer_msg, &msg),
-                    "\x0A\x01\x61\x12\x01\x62"))
+                    "\x0A\x01\x61\x12\x01\x62\x1A\x00"))
         
         memset(&msg3, 0, sizeof(msg3));
         msg.rtext_count = 1;
@@ -296,7 +296,7 @@ int main()
         msg.rsubmsg_count = 1;
         msg.rsubmsg[0] = &msg3;
         TEST(WRITES(pb_encode(&s, PointerContainer_msg, &msg),
-                    "\x0A\x01\x61\x12\x01\x62"
+                    "\x0A\x01\x61\x12\x01\x62\x1A\x00"
                     "\x2A\x01\x65\x32\x01\x66\x3A\x00"));
         
         PointerContainer_set(msg, otext);
@@ -305,7 +305,7 @@ int main()
         msg.oblob.size = 1;
         msg.oblob.bytes = (uint8_t*)"d";
         TEST(WRITES(pb_encode(&s, PointerContainer_msg, &msg),
-                    "\x0A\x01\x61\x12\x01\x62"
+                    "\x0A\x01\x61\x12\x01\x62\x1A\x00"
                     "\x2A\x01\x65\x32\x01\x66\x3A\x00"
                     "\x42\x01\x63\x4A\x01\x64"));
     }

@@ -661,10 +661,11 @@ bool checkreturn pb_dec_submessage(pb_istream_t *stream, const pb_field_t *field
 #ifdef MALLOC_HEADER
         if (*(void**)dest == NULL)
         {
-            void *object = malloc(msg->size);
+            void *object = calloc(1, msg->size);
             if (!object)
                 return false;
             *(void**)dest = object;
+            pb_message_set_to_defaults(msg, object);
             dest = object;
         } else {
             dest = *(void**)dest;
