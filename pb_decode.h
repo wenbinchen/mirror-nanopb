@@ -68,4 +68,10 @@ bool pb_dec_bytes(pb_istream_t *stream, const pb_field_t *field, void *dest);
 bool pb_dec_string(pb_istream_t *stream, const pb_field_t *field, void *dest);
 bool pb_dec_submessage(pb_istream_t *stream, const pb_field_t *field, void *dest);
 
+/* Release memory and clear pointers for any unused elements of
+ * dest_struct.  This function is only compiled when MALLOC_HEADER is
+ * defined for pb_decode.c.
+ */
+bool pb_clean(const pb_message_t *msg, void *dest_struct);
+
 #endif

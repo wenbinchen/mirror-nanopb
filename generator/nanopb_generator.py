@@ -3,6 +3,7 @@
 import google.protobuf.descriptor_pb2 as descriptor
 import nanopb_pb2
 import os.path
+from optparse import OptionParser
 
 # Values are tuple (c type, pb ltype)
 FieldD = descriptor.FieldDescriptorProto
@@ -21,6 +22,12 @@ datatypes = {
     FieldD.TYPE_UINT32: ('uint32_t', 'PB_LTYPE_VARINT'),
     FieldD.TYPE_UINT64: ('uint64_t', 'PB_LTYPE_VARINT')
 }
+pointable_types = frozenset([
+    FieldD.TYPE_STRING,
+    FieldD.TYPE_BYTES,
+    FieldD.TYPE_MESSAGE
+])
+options = None
 
 class Names:
     '''Keeps a set of nested names and formats them to C identifier.
@@ -70,6 +77,8 @@ class Field:
         self.max_size = None
         self.max_count = None
         self.array_decl = ""
+        self.is_pointer = options.pointer
+        self.is_array = False
         
         # Parse nanopb-specific field options
         if desc.options.HasExtension(nanopb_pb2.nanopb):
@@ -78,6 +87,11 @@ class Field:
                 self.max_size = ext.max_size
             if ext.HasField("max_count"):
                 self.max_count = ext.max_count
+            if ext.HasField("pointer"):
+                self.is_pointer = ext.pointer
+                if desc.type not in pointable_types:
+                    raise NotImplementedError('Cannot make %s.%s a pointer'
+                                              % (struct_name, desc.name))
         
         if desc.HasField('default_value'):
             self.default = desc.default_value
@@ -96,8 +110,11 @@ class Field:
             else:
                 self.htype = 'PB_HTYPE_ARRAY'
                 self.array_decl = '[%d]' % self.max_count
+                self.is_array = True
         else:
             raise NotImplementedError(desc.label)
+        if self.is_pointer:
+            self.htype += ' | PB_HTYPE_POINTER'
         
         # Decide LTYPE and CTYPE
         # LTYPE is the low-order nibble of nanopb field description,
@@ -112,14 +129,18 @@ class Field:
                 self.default = self.ctype + self.default
         elif desc.type == FieldD.TYPE_STRING:
             self.ltype = 'PB_LTYPE_STRING'
-            if self.max_size is None:
+            if self.is_pointer:
+                self.ctype = 'char'
+            elif self.max_size is None:
                 is_callback = True
             else:
                 self.ctype = 'char'
                 self.array_decl += '[%d]' % self.max_size
         elif desc.type == FieldD.TYPE_BYTES:
             self.ltype = 'PB_LTYPE_BYTES'
-            if self.max_size is None:
+            if self.is_pointer:
+                self.ctype = 'pb_bytes_t'
+            elif self.max_size is None:
                 is_callback = True
             else:
                 self.ctype = self.struct_name + self.name + 't'
@@ -138,11 +159,14 @@ class Field:
         return cmp(self.tag, other.tag)
     
     def __str__(self):
-        if self.htype == 'PB_HTYPE_ARRAY':
+        if self.is_array:
             result = '    size_t ' + self.name + '_count;\n'
         else:
             result = ''
-        result += '    %s %s%s;' % (self.ctype, self.name, self.array_decl)
+        if self.is_pointer and self.ctype != 'pb_bytes_t':
+            result += '    %s *%s%s;' % (self.ctype, self.name, self.array_decl)
+        else:
+            result += '    %s %s%s;' % (self.ctype, self.name, self.array_decl)
         return result
     
     def types(self):
@@ -205,17 +229,16 @@ class Field:
         else:
             result += '    pb_delta_end(%s, %s, %s),' % (self.struct_name, self.name, prev_field_name)
         
-        if self.htype == 'PB_HTYPE_ARRAY':
+        if self.is_array:
             result += '\n    pb_delta(%s, %s_count, %s),' % (self.struct_name, self.name, self.name)
         else:
             result += ' 0,'
         
-        
-        if self.htype == 'PB_HTYPE_ARRAY':
+        if self.is_array:
             result += '\n    pb_membersize(%s, %s[0]),' % (self.struct_name, self.name)
             result += ('\n    pb_membersize(%s, %s) / pb_membersize(%s, %s[0]),'
                        % (self.struct_name, self.name, self.struct_name, self.name))
-        elif self.htype != 'PB_HTYPE_CALLBACK' and self.ltype == 'PB_LTYPE_BYTES':
+        elif self.htype != 'PB_HTYPE_CALLBACK' and not self.is_pointer and self.ltype == 'PB_LTYPE_BYTES':
             result += '\n    pb_membersize(%s, bytes),' % self.ctype
             result += ' 0,'
         else:
@@ -240,13 +263,14 @@ class Message:
 
     def get_dependencies(self):
         '''Get list of type names that this structure refers to.'''
-        return [str(field.ctype) for field in self.fields]
+        return [str(field.ctype) for field in self.fields if not
+                (field.is_pointer or field.htype == 'PB_HTYPE_CALLBACK')]
     
     def __str__(self):
-        result = 'typedef struct {\n'
+        result = 'struct %s {\n' % self.name
         result += '    uint8_t has_fields[%d];\n' % ((len(self.fields) + 7) / 8)
         result += '\n'.join([str(f) for f in self.ordered_fields])
-        result += '\n} %s;' % self.name
+        result += '\n};'
         return result
     
     def types(self):
@@ -257,6 +281,9 @@ class Message:
                 result += types + '\n'
         return result
     
+    def typedef(self):
+        return 'typedef struct %s %s;' % (self.name, self.name)
+
     def default_decl(self, declaration_only = False):
         result = ""
         for field in self.fields:
@@ -273,7 +300,7 @@ class Message:
 
     def message_definition(self):
         result = 'const %s_msg_t %s_real_msg = {\n' % (self.name, self.name)
-        result += '    %d,\n' % len(self.fields)
+        result += '    %d, sizeof(%s),\n' % (len(self.fields), self.name)
         
         result += '    {\n\n'
         prev = None
@@ -379,6 +406,11 @@ def generate_header(headername, enums, messages):
     for enum in enums:
         yield str(enum) + '\n\n'
     
+    yield '/* Struct typedefs */\n'
+    for msg in messages:
+        yield msg.typedef() + '\n'
+    yield '\n'
+    
     yield '/* Struct definitions */\n'
     for msg in sort_dependencies(messages):
         yield msg.types()
@@ -418,18 +450,25 @@ if __name__ == '__main__':
     import sys
     import os.path
     
-    if len(sys.argv) != 2:
-        print "Usage: " + sys.argv[0] + " file.pb"
-        print "where file.pb has been compiled from .proto by:"
-        print "protoc -ofile.pb file.proto"
-        print "Output fill be written to file.pb.h and file.pb.c"
-        sys.exit(1)
-    
-    data = open(sys.argv[1]).read()
+    parser = OptionParser(usage="Usage: %prog [options] file.pb",
+                          epilog=
+"""file.pb should be compiled from file.proto by:
+protoc -ofile.pb file.proto
+""")
+    parser.add_option("-p", "--pointer", dest="pointer",
+                      action="store_true", default=False,
+                      help="generate pointers for non-scalar fields")
+
+    (options, args) = parser.parse_args()
+
+    if len(args) != 1:
+        parser.error("Please provide exactly one file.pb argument")
+
+    data = open(args[0]).read()
     fdesc = descriptor.FileDescriptorSet.FromString(data)
     enums, messages = parse_file(fdesc.file[0])
     
-    noext = os.path.splitext(sys.argv[1])[0]
+    noext = os.path.splitext(args[0])[0]
     headername = noext + '.pb.h'
     sourcename = noext + '.pb.c'
     headerbasename = os.path.basename(headername)

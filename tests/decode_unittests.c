@@ -279,6 +279,30 @@ int main()
         TEST((s = S("\x08"), !pb_decode(&s, IntegerArray_msg, &dest)))
     }
     
+#ifdef MALLOC_HEADER
+    {
+        pb_istream_t s;
+        PointerContainer dest;
+        
+        COMMENT("Testing pb_decode with pointer fields")
+        
+        memset(&dest, 0, sizeof(dest));
+        TEST((s = S("\x0A\x01\x61\x12\x01\x62\x2A\x01\x65\x32\x01\x66\x3A\x00"
+                  "\x42\x01\x63\x4A\x01\x64"),
+              pb_decode(&s, PointerContainer_msg, &dest)))
+        TEST(0 == strcmp(dest.text, "a"))
+        TEST(dest.blob.size == 1 && dest.blob.bytes[0] == 'b')
+        TEST(dest.submsg == NULL)
+        TEST(dest.rtext_count == 1 && (0 == strcmp(dest.rtext[0], "e")))
+        TEST(dest.rblob_count == 1 && dest.rblob[0].size == 1 &&
+             dest.rblob[0].bytes[0] == 'f')
+        TEST(dest.rsubmsg_count == 1)
+        TEST(0 == strcmp(dest.otext, "c"))
+        TEST(dest.oblob.size == 1 && dest.oblob.bytes[0] == 'd')
+        TEST(pb_clean(PointerContainer_msg, &dest));
+    }
+#endif
+    
     if (status != 0)
         fprintf(stdout, "\n\nSome tests FAILED!\n");
     

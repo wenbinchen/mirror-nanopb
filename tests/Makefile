@@ -1,12 +1,12 @@
 CFLAGS=-ansi -Wall -Werror -I .. -g -O0 --coverage
 LDFLAGS=--coverage
 DEPS=../pb_decode.h ../pb_encode.h ../pb.h person.pb.h callbacks.pb.h unittests.h unittestproto.pb.h
-TESTS=test_decode1 test_encode1 decode_unittests encode_unittests
+TESTS=test_decode1 test_encode1 test_decode_callbacks test_encode_callbacks decode_unittests decode_ptr_unittests encode_unittests
 
 all: breakpoints $(TESTS) run_unittests
 
 clean:
-	rm -f $(TESTS) person.pb* *.o *.gcda *.gcno
+	rm -f $(TESTS) *.pb.c *.pb.h *.o *.gcda *.gcno
 
 %.o: %.c
 %.o: %.c $(DEPS)
@@ -16,12 +16,18 @@ pb_encode.o: ../pb_encode.c $(DEPS)
 	$(CC) $(CFLAGS) -c -o $@ $<
 pb_decode.o: ../pb_decode.c $(DEPS)
 	$(CC) $(CFLAGS) -c -o $@ $<
+pb_ptr_decode.o: ../pb_decode.c $(DEPS)
+	$(CC) $(CFLAGS) -c -o $@ $<
+decode_ptr_unittests.o: decode_unittests.c $(DEPS)
+	$(CC) $(CFLAGS) -c -o $@ $<
 
 test_decode1: test_decode1.o pb_decode.o person.pb.o
 test_encode1: test_encode1.o pb_encode.o person.pb.o
 test_decode_callbacks: test_decode_callbacks.o pb_decode.o callbacks.pb.o
 test_encode_callbacks: test_encode_callbacks.o pb_encode.o callbacks.pb.o
 decode_unittests: decode_unittests.o pb_decode.o unittestproto.pb.o
+pb_ptr_decode.o decode_ptr_unittests.o: CFLAGS += -DMALLOC_HEADER="<stdlib.h>"
+decode_ptr_unittests: decode_ptr_unittests.o pb_ptr_decode.o unittestproto.pb.o
 encode_unittests: encode_unittests.o pb_encode.o unittestproto.pb.o
 
 %.pb: %.proto
@@ -37,10 +43,11 @@ coverage: run_unittests
 	gcov pb_encode.gcda
 	gcov pb_decode.gcda
 
-run_unittests: decode_unittests encode_unittests test_encode1 test_decode1 test_encode_callbacks test_decode_callbacks
+run_unittests: decode_unittests decode_ptr_unittests encode_unittests test_encode1 test_decode1 test_encode_callbacks test_decode_callbacks
 	rm -f *.gcda
 	
 	./decode_unittests > /dev/null
+	./decode_ptr_unittests > /dev/null
 	./encode_unittests > /dev/null
 	
 	[ "`./test_encode1 | ./test_decode1`" = \

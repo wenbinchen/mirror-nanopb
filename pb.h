@@ -78,7 +78,14 @@ typedef uint8_t pb_type_t;
  * used to speculatively index an array). */
 #define PB_HTYPE_CALLBACK 0x30
 
-#define PB_HTYPE(x) ((x) & 0xF0)
+/* Indicates that a string, bytes or non-repeated submessage is
+ * represented using a pointer (char* for string, pb_byptes_array_t
+ * for bytes).
+ */
+#define PB_HTYPE_POINTER 0x80
+
+#define PB_POINTER(x) ((x) & PB_HTYPE_POINTER)
+#define PB_HTYPE(x) ((x) & 0x70)
 #define PB_LTYPE(x) ((x) & 0x0F)
 
 /* This structure is used in auto-generated constants
@@ -97,7 +104,7 @@ struct _pb_field_t {
     uint8_t data_size; /* Data size in bytes for a single item */
     uint8_t array_size; /* Maximum number of entries in array */
     
-    /* Field definitions for submessage
+    /* Pointer to message structure for submessage
      * OR default value for all other non-array, non-callback types
      * If null, then field will zeroed. */
     const void *ptr;
@@ -112,11 +119,20 @@ typedef struct {
     uint8_t bytes[1];
 } pb_bytes_array_t;
 
-/* This macro is define the type of a structure for a message with N
+/* This structure is used for dynamically allocated 'bytes' arrays.
+ */
+typedef struct {
+    size_t size;
+    size_t alloced;
+    uint8_t *bytes;
+} pb_bytes_t;
+
+/* This macro defines the type of a structure for a message with N
  * fields.
  */
 #define PB_MSG_STRUCT(N) struct {               \
         unsigned int field_count;               \
+        size_t size;                            \
         pb_field_t fields[N];                   \
     }
 

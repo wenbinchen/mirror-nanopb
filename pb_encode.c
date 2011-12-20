@@ -161,22 +161,21 @@ bool checkreturn pb_encode(pb_ostream_t *stream, const pb_message_t *msg, const 
                 
         switch (PB_HTYPE(field->type))
         {
+            case PB_HTYPE_OPTIONAL:
+                if (!(has_fields[i/8] & (1 << i%8)))
+                    break;
+                if (PB_POINTER(field->type)
+                    && (PB_LTYPE(field->type) == PB_LTYPE_STRING
+                        || PB_LTYPE(field->type) == PB_LTYPE_SUBMESSAGE)
+                    && *(void**)pData == NULL)
+                    break;
+                /* else fall through to required case */
+            
             case PB_HTYPE_REQUIRED:
                 if (!pb_encode_tag_for_field(stream, field))
                     return false;
                 if (!func(stream, field, pData))
                     return false;
-                break;
-            
-            case PB_HTYPE_OPTIONAL:
-                if (has_fields[i/8] & (1 << i%8))
-                {
-                    if (!pb_encode_tag_for_field(stream, field))
-                        return false;
-                
-                    if (!func(stream, field, pData))
-                        return false;
-                }
                 break;
             
             case PB_HTYPE_ARRAY:
@@ -334,13 +333,22 @@ bool checkreturn pb_enc_fixed32(pb_ostream_t *stream, const pb_field_t *field, c
 
 bool checkreturn pb_enc_bytes(pb_ostream_t *stream, const pb_field_t *field, const void *src)
 {
-    pb_bytes_array_t *bytes = (pb_bytes_array_t*)src;
-    return pb_encode_string(stream, bytes->bytes, bytes->size);
+    if ((field != NULL) && PB_POINTER(field->type)) {
+        pb_bytes_t *bytes = (pb_bytes_t*)src;
+        return pb_encode_string(stream, bytes->bytes, bytes->size);
+    } else {
+        pb_bytes_array_t *bytes = (pb_bytes_array_t*)src;
+        return pb_encode_string(stream, bytes->bytes, bytes->size);
+    }
 }
 
 bool checkreturn pb_enc_string(pb_ostream_t *stream, const pb_field_t *field, const void *src)
 {
-    return pb_encode_string(stream, (uint8_t*)src, strlen((char*)src));
+    size_t len;
+    if ((field != NULL) && PB_POINTER(field->type))
+        src = *(char**)src;
+    len = src ? strlen((char*)src) : 0;
+    return pb_encode_string(stream, (uint8_t*)src, len);
 }
 
 bool checkreturn pb_enc_submessage(pb_ostream_t *stream, const pb_field_t *field, const void *src)
@@ -352,6 +360,11 @@ bool checkreturn pb_enc_submessage(pb_ostream_t *stream, const pb_field_t *field
     if (field->ptr == NULL)
         return false;
     
+    if (PB_POINTER(field->type)) {
+        src = *(void**)src;
+        if (src == NULL)
+            return false;
+    }
     if (!pb_encode(&substream, (const pb_message_t*)field->ptr, src))
         return false;
     

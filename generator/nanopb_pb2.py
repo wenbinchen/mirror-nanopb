@@ -7,10 +7,12 @@ from google.protobuf import descriptor_pb2
 # @@protoc_insertion_point(imports)
 
 
+import google.protobuf.descriptor_pb2
+
 DESCRIPTOR = descriptor.FileDescriptor(
   name='nanopb.proto',
   package='',
-  serialized_pb='\n\x0cnanopb.proto\x1a google/protobuf/descriptor.proto\"4\n\rNanoPBOptions\x12\x10\n\x08max_size\x18\x01 \x01(\x05\x12\x11\n\tmax_count\x18\x02 \x01(\x05:>\n\x06nanopb\x12\x1d.google.protobuf.FieldOptions\x18\xf2\x07 \x01(\x0b\x32\x0e.NanoPBOptions')
+  serialized_pb='\n\x0cnanopb.proto\x1a google/protobuf/descriptor.proto\"E\n\rNanoPBOptions\x12\x10\n\x08max_size\x18\x01 \x01(\x05\x12\x11\n\tmax_count\x18\x02 \x01(\x05\x12\x0f\n\x07pointer\x18\x03 \x01(\x08:>\n\x06nanopb\x12\x1d.google.protobuf.FieldOptions\x18\xf2\x07 \x01(\x0b\x32\x0e.NanoPBOptions')
 
 
 NANOPB_FIELD_NUMBER = 1010
@@ -44,6 +46,13 @@ _NANOPBOPTIONS = descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None),
+    descriptor.FieldDescriptor(
+      name='pointer', full_name='NanoPBOptions.pointer', index=2,
+      number=3, type=8, cpp_type=7, label=1,
+      has_default_value=False, default_value=False,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
   ],
   extensions=[
   ],
@@ -54,11 +63,10 @@ _NANOPBOPTIONS = descriptor.Descriptor(
   is_extendable=False,
   extension_ranges=[],
   serialized_start=50,
-  serialized_end=102,
+  serialized_end=119,
 )
 
-import google.protobuf.descriptor_pb2
-
+DESCRIPTOR.message_types_by_name['NanoPBOptions'] = _NANOPBOPTIONS
 
 class NanoPBOptions(message.Message):
   __metaclass__ = reflection.GeneratedProtocolMessageType

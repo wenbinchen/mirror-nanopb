@@ -14,6 +14,9 @@
 #include "pb.h"
 #include "pb_decode.h"
 #include <string.h>
+#ifdef MALLOC_HEADER
+# include MALLOC_HEADER
+#endif
 
 typedef bool (*pb_decoder_t)(pb_istream_t *stream, const pb_field_t *field, void *dest) checkreturn;
 
@@ -360,6 +363,9 @@ static void pb_message_set_to_defaults(const pb_message_t *msg, void *dest_struc
         }
         else if (PB_LTYPE(iter.current->type) == PB_LTYPE_SUBMESSAGE)
         {
+            if (PB_POINTER(iter.current->type) &&
+                (*(void**)iter.pData == NULL))
+                continue;
             pb_message_set_to_defaults(iter.current->ptr, iter.pData);
         }
         else if (iter.current->ptr != NULL)
@@ -433,6 +439,85 @@ bool checkreturn pb_decode(pb_istream_t *stream, const pb_message_t *msg, void *
     return true;
 }
 
+#ifdef MALLOC_HEADER
+
+/* Clean a single unused field (or unused array element). */
+static bool checkreturn pb_clean_pointer(const pb_field_t *field, void *data)
+{
+    switch (PB_LTYPE(field->type))
+    {
+    case PB_LTYPE_BYTES:
+    {
+        pb_bytes_t *bytes = (pb_bytes_t*)data;
+        bytes->size = 0;
+        bytes->alloced = 0;
+        free(bytes->bytes);
+        return true;
+    }
+    case PB_LTYPE_STRING:
+    case PB_LTYPE_SUBMESSAGE:
+    {
+        void **obj = (void**)data;
+        free(*obj);
+        *obj = NULL;
+        return true;
+    }
+    default:
+        return false;
+    }
+}
+
+/* Clean unused trailing elements in an array. */
+static bool checkreturn pb_clean_array(const pb_field_t *field, void *data, size_t count)
+{
+    unsigned int i;
+    for (i = count; i < field->array_size; i++)
+    {
+        if (!pb_clean_pointer(field, data))
+            return false;
+        data = (char*)data + field->data_size;
+    }
+    return true;
+}
+
+/* Clean unused fields in a message. */
+bool pb_clean(const pb_message_t *msg, void *dest_struct)
+{
+    const char *has_fields = dest_struct;
+    const void *pSize;
+    char *pData = (char*)dest_struct;
+    size_t prev_size = 0;
+    unsigned int i;
+    
+    for (i = 0; i < msg->field_count; i++)
+    {
+        const pb_field_t *field = &msg->fields[i];
+        bool status;
+        pData = pData + prev_size + field->data_offset;
+        pSize = pData + field->size_offset;
+        prev_size = field->data_size;
+        if (PB_HTYPE(field->type) == PB_HTYPE_ARRAY)
+            prev_size *= field->array_size;
+        
+        if (!PB_POINTER(field->type))
+            continue;
+        else if (PB_HTYPE(field->type) == PB_HTYPE_ARRAY)
+            status = pb_clean_array(field, pData, *(size_t*)pSize);
+        else if (!(has_fields[i/8] & 1 << (i%8)))
+            status = pb_clean_pointer(field, pData);
+        else /* pointer field is used */
+            continue;
+        
+        if (!status)
+            return false;
+    }
+    
+    return true;
+}
+
+#endif
+
+
 /* Field decoders */
 
 /* Copy destsize bytes from src so that values are casted properly.
@@ -505,6 +590,24 @@ bool checkreturn pb_dec_bytes(pb_istream_t *stream, const pb_field_t *field, voi
     if (x->size > field->data_size)
         return false;
     
+#ifdef MALLOC_HEADER
+    if (PB_POINTER(field->type))
+    {
+        pb_bytes_t *x2 = (pb_bytes_t*)dest;
+        
+        if (x2->alloced < x2->size)
+        {
+            void *new_bytes = realloc(x2->bytes, x2->size);
+            if (!new_bytes)
+                return false;
+            x2->alloced = x2->size;
+            x2->bytes = new_bytes;
+        }
+        
+        return pb_read(stream, x2->bytes, x2->size);
+    }
+#endif
+    
     return pb_read(stream, x->bytes, x->size);
 }
 
@@ -518,6 +621,18 @@ bool checkreturn pb_dec_string(pb_istream_t *stream, const pb_field_t *field, vo
     if (size > field->data_size - 1)
         return false;
     
+#ifdef MALLOC_HEADER
+    if (PB_POINTER(field->type))
+    {
+        uint8_t *string = (uint8_t*)realloc(*(uint8_t**)dest, size + 1);
+        if (!string)
+            return false;
+        
+        *(uint8_t**)dest = string;
+        dest = string;
+    }
+#endif
+    
     status = pb_read(stream, (uint8_t*)dest, size);
     *((uint8_t*)dest + size) = 0;
     return status;
@@ -527,6 +642,7 @@ bool checkreturn pb_dec_submessage(pb_istream_t *stream, const pb_field_t *field
 {
     bool status;
     pb_istream_t substream;
+    const pb_message_t *msg;
     
     if (!make_string_substream(stream, &substream))
         return false;
@@ -534,7 +650,25 @@ bool checkreturn pb_dec_submessage(pb_istream_t *stream, const pb_field_t *field
     if (field->ptr == NULL)
         return false;
     
-    status = pb_decode(&substream, (const pb_message_t*)field->ptr, dest);
+    msg = (const pb_message_t*)field->ptr;
+    
+#ifdef MALLOC_HEADER
+    if (PB_POINTER(field->type))
+    {
+        if (*(void**)dest == NULL)
+        {
+            void *object = malloc(msg->size);
+            if (!object)
+                return false;
+            *(void**)dest = object;
+            dest = object;
+        } else {
+            dest = *(void**)dest;
+        }
+    }
+#endif
+    
+    status = pb_decode(&substream, msg, dest);
     stream->state = substream.state;
     return status;
 }

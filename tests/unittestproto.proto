@@ -26,3 +26,24 @@ message CallbackContainer {
 message CallbackContainerContainer {
     required CallbackContainer submsg = 1;
 }
+
+message PointerContainer {
+    required string text = 1 [(nanopb).pointer = true];
+    required bytes blob = 2 [(nanopb).pointer = true];
+    optional PointerContainer submsg = 3 [(nanopb).pointer = true];
+    // This should be rejected:
+    // required int32 data = 4 [(nanopb).pointer = true];
+    repeated string rtext = 5 [(nanopb).pointer = true, (nanopb).max_count = 10];
+    repeated bytes rblob = 6 [(nanopb).pointer = true, (nanopb).max_count = 10];
+    repeated IntegerArray rsubmsg = 7 [(nanopb).pointer = true, (nanopb).max_count = 10];
+    optional string otext = 8 [(nanopb).pointer = true];
+    optional bytes oblob = 9 [(nanopb).pointer = true];
+}
+
+message RecursiveRef_A {
+    optional RecursiveRef_B submsg = 1 [(nanopb).pointer = true];
+}
+
+message RecursiveRef_B {
+    required RecursiveRef_A submsg = 1;
+}
