@@ -177,11 +177,13 @@ typedef PB_MSG_STRUCT(1) pb_message_t;
  */
 typedef struct _pb_istream_t pb_istream_t;
 typedef struct _pb_ostream_t pb_ostream_t;
+typedef struct _pb_strstream_t pb_strstream_t;
 typedef struct _pb_callback_t pb_callback_t;
 struct _pb_callback_t {
     union {
         bool (*decode)(pb_istream_t *stream, const pb_field_t *field, void *arg);
         bool (*encode)(pb_ostream_t *stream, const pb_field_t *field, const void *arg);
+        bool (*encode_buffer)(pb_strstream_t *stream, const pb_field_t *field, const void *arg);
     } funcs;
     
     /* Free arg for use by callback */

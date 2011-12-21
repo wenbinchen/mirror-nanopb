@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "pb_encode.h"
+#include "pb_encode_buffer.h"
 #include "unittests.h"
 #include "unittestproto.pb.h"
 
@@ -23,6 +24,14 @@ bool fieldcallback(pb_ostream_t *stream, const pb_field_t *field, const void *ar
     return pb_encode_varint(stream, value);
 }
 
+bool fieldcallback_buf(pb_strstream_t *stream, const pb_field_t *field, const void *arg)
+{
+    int value = 0x55;
+    if (!pb_encbuf_varint(stream, value))
+        return false;
+    return pb_encbuf_tag_for_field(stream, field);
+}
+
 bool crazyfieldcallback(pb_ostream_t *stream, const pb_field_t *field, const void *arg)
 {
     /* This callback writes different amount of data the second time. */
@@ -31,6 +40,16 @@ bool crazyfieldcallback(pb_ostream_t *stream, const pb_field_t *field, const voi
     if (!pb_encode_tag_for_field(stream, field))
         return false;
     return pb_encode_varint(stream, *state);
+}
+
+bool crazyfieldcallback_buf(pb_strstream_t *stream, const pb_field_t *field, const void *arg)
+{
+    /* This callback writes different amount of data the second time. */
+    uint32_t *state = (uint32_t*)arg;
+    *state <<= 8;
+    if (!pb_encbuf_varint(stream, *state))
+        return false;
+    return pb_encbuf_tag_for_field(stream, field);
 }
 
 /* Check that expression x writes data y.
@@ -42,6 +61,20 @@ s = pb_ostream_from_buffer(buffer, sizeof(buffer)), \
 (x) && \
 memcmp(buffer, y, sizeof(y) - 1) == 0 && \
 buffer[sizeof(y) - 1] == 0xAA
+
+/* Check that expression x writes data y into s2.
+ * Y is a string, which may contain null bytes. Null terminator is ignored.
+ */
+#define WRITES_BUF(x, y) \
+memset(buffer, 0xAA, sizeof(buffer)), \
+s2 = pb_strstream_from_buffer(buffer, sizeof(buffer)), \
+(x) && \
+memcmp(s2.last, y, sizeof(y) - 1) == 0 && \
+s2.last - buffer == sizeof(buffer) - (sizeof(y) - 1)
+
+/* Check that expression x and y write data z into s and s2, respectively.
+ */
+#define WRITES_BOTH(x, y, z) (WRITES(x, z)) && (WRITES_BUF(y, z))
 
 int main()
 {
@@ -72,51 +105,74 @@ int main()
     {
         uint8_t buffer[30];
         pb_ostream_t s;
+        pb_strstream_t s2;
         
         COMMENT("Test pb_encode_varint")
-        TEST(WRITES(pb_encode_varint(&s, 0), "\0"));
-        TEST(WRITES(pb_encode_varint(&s, 1), "\1"));
-        TEST(WRITES(pb_encode_varint(&s, 0x7F), "\x7F"));
-        TEST(WRITES(pb_encode_varint(&s, 0x80), "\x80\x01"));
-        TEST(WRITES(pb_encode_varint(&s, UINT32_MAX), "\xFF\xFF\xFF\xFF\x0F"));
-        TEST(WRITES(pb_encode_varint(&s, UINT64_MAX), "\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\x01"));
+        TEST(WRITES_BOTH(pb_encode_varint(&s, 0),
+                         pb_encbuf_varint(&s2, 0), "\0"));
+        TEST(WRITES_BOTH(pb_encode_varint(&s, 1),
+                         pb_encbuf_varint(&s2, 1), "\1"));
+        TEST(WRITES_BOTH(pb_encode_varint(&s, 0x7F),
+                         pb_encbuf_varint(&s2, 0x7F), "\x7F"));
+        TEST(WRITES_BOTH(pb_encode_varint(&s, 0x80),
+                         pb_encbuf_varint(&s2, 0x80), "\x80\x01"));
+        TEST(WRITES_BOTH(pb_encode_varint(&s, UINT32_MAX),
+                         pb_encbuf_varint(&s2, UINT32_MAX),
+                         "\xFF\xFF\xFF\xFF\x0F"));
+        TEST(WRITES_BOTH(pb_encode_varint(&s, UINT64_MAX),
+                         pb_encbuf_varint(&s2, UINT64_MAX),
+                         "\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\x01"));
     }
     
     {
         uint8_t buffer[30];
         pb_ostream_t s;
+        pb_strstream_t s2;
         
         COMMENT("Test pb_encode_tag")
-        TEST(WRITES(pb_encode_tag(&s, PB_WT_STRING, 5), "\x2A"));
-        TEST(WRITES(pb_encode_tag(&s, PB_WT_VARINT, 99), "\x98\x06"));
+        TEST(WRITES_BOTH(pb_encode_tag(&s, PB_WT_STRING, 5),
+                         pb_encbuf_tag(&s2, PB_WT_STRING, 5), "\x2A"));
+        TEST(WRITES_BOTH(pb_encode_tag(&s, PB_WT_VARINT, 99),
+                         pb_encbuf_tag(&s2, PB_WT_VARINT, 99), "\x98\x06"));
     }
     
     {
         uint8_t buffer[30];
         pb_ostream_t s;
+        pb_strstream_t s2;
         pb_field_t field = {10, PB_LTYPE_SVARINT};
         
         COMMENT("Test pb_encode_tag_for_field")
-        TEST(WRITES(pb_encode_tag_for_field(&s, &field), "\x50"));
+        TEST(WRITES_BOTH(pb_encode_tag_for_field(&s, &field),
+                         pb_encbuf_tag_for_field(&s2, &field), "\x50"));
         
         field.type = PB_LTYPE_FIXED64;
-        TEST(WRITES(pb_encode_tag_for_field(&s, &field), "\x51"));
+        TEST(WRITES_BOTH(pb_encode_tag_for_field(&s, &field),
+                         pb_encbuf_tag_for_field(&s2, &field), "\x51"));
         
         field.type = PB_LTYPE_STRING;
-        TEST(WRITES(pb_encode_tag_for_field(&s, &field), "\x52"));
+        TEST(WRITES_BOTH(pb_encode_tag_for_field(&s, &field),
+                         pb_encbuf_tag_for_field(&s2, &field), "\x52"));
         
         field.type = PB_LTYPE_FIXED32;
-        TEST(WRITES(pb_encode_tag_for_field(&s, &field), "\x55"));
+        TEST(WRITES_BOTH(pb_encode_tag_for_field(&s, &field),
+                         pb_encbuf_tag_for_field(&s2, &field), "\x55"));
     }
     
     {
         uint8_t buffer[30];
         pb_ostream_t s;
+        pb_strstream_t s2;
         
         COMMENT("Test pb_encode_string")
-        TEST(WRITES(pb_encode_string(&s, (const uint8_t*)"abcd", 4), "\x04""abcd"));
-        TEST(WRITES(pb_encode_string(&s, (const uint8_t*)"abcd\x00", 5), "\x05""abcd\x00"));
-        TEST(WRITES(pb_encode_string(&s, (const uint8_t*)"", 0), "\x00"));
+        TEST(WRITES_BOTH(pb_encode_string(&s, (const uint8_t*)"abcd", 4),
+                         pb_encbuf_string(&s2, (const uint8_t*)"abcd", 4),
+                         "\x04""abcd"));
+        TEST(WRITES_BOTH(pb_encode_string(&s, (const uint8_t*)"abcd\x00", 5),
+                         pb_encbuf_string(&s2, (const uint8_t*)"abcd\x00", 5),
+                         "\x05""abcd\x00"));
+        TEST(WRITES_BOTH(pb_encode_string(&s, (const uint8_t*)"", 0),
+                         pb_encbuf_string(&s2, (const uint8_t*)"", 0), "\x00"));
     }
     
     {
@@ -192,71 +248,90 @@ int main()
     {
         uint8_t buffer[10];
         pb_ostream_t s;
+        pb_strstream_t s2;
         IntegerArray msg = {{0}, 5, {1, 2, 3, 4, 5}};
         
         COMMENT("Test pb_encode with int32 array")
         
-        TEST(WRITES(pb_encode(&s, IntegerArray_msg, &msg), "\x0A\x05\x01\x02\x03\x04\x05"))
+        TEST(WRITES_BOTH(pb_encode(&s, IntegerArray_msg, &msg),
+                         pb_encode_buffer(&s2, IntegerArray_msg, &msg),
+                         "\x0A\x05\x01\x02\x03\x04\x05"))
         
         msg.data_count = 0;
-        TEST(WRITES(pb_encode(&s, IntegerArray_msg, &msg), ""))
+        TEST(WRITES_BOTH(pb_encode(&s, IntegerArray_msg, &msg),
+                         pb_encode_buffer(&s2, IntegerArray_msg, &msg), ""))
         
         msg.data_count = 10;
         TEST(!pb_encode(&s, IntegerArray_msg, &msg))
+        TEST(!pb_encode_buffer(&s2, IntegerArray_msg, &msg))
     }
     
     {
         uint8_t buffer[10];
         pb_ostream_t s;
+        pb_strstream_t s2;
         FloatArray msg = {{0}, 1, {99.0f}};
         
         COMMENT("Test pb_encode with float array")
         
-        TEST(WRITES(pb_encode(&s, FloatArray_msg, &msg),
-                    "\x0A\x04\x00\x00\xc6\x42"))
+        TEST(WRITES_BOTH(pb_encode(&s, FloatArray_msg, &msg),
+                         pb_encode_buffer(&s2, FloatArray_msg, &msg),
+                         "\x0A\x04\x00\x00\xc6\x42"))
         
         msg.data_count = 0;
-        TEST(WRITES(pb_encode(&s, FloatArray_msg, &msg), ""))
+        TEST(WRITES_BOTH(pb_encode(&s, FloatArray_msg, &msg),
+                         pb_encode_buffer(&s2, FloatArray_msg, &msg), ""))
         
         msg.data_count = 3;
         TEST(!pb_encode(&s, FloatArray_msg, &msg))
+        TEST(!pb_encode_buffer(&s2, FloatArray_msg, &msg))
     }
     
     {
         uint8_t buffer[10];
         pb_ostream_t s;
+        pb_strstream_t s2;
         CallbackArray msg;
         
-        msg.data.funcs.encode = &fieldcallback;
-        
         COMMENT("Test pb_encode with callback field.")
+        msg.data.funcs.encode = &fieldcallback;
         TEST(WRITES(pb_encode(&s, CallbackArray_msg, &msg), "\x08\x55"))
+        msg.data.funcs.encode_buffer = &fieldcallback_buf;
+        TEST(WRITES_BUF(pb_encode_buffer(&s2, CallbackArray_msg, &msg), "\x08\x55"))
     }
     
     {
         uint8_t buffer[10];
         pb_ostream_t s;
+        pb_strstream_t s2;
         IntegerContainer msg = {{0}, {{0}, 5, {1,2,3,4,5}}};
         
         COMMENT("Test pb_encode with packed array in a submessage.")
-        TEST(WRITES(pb_encode(&s, IntegerContainer_msg, &msg),
-                    "\x0A\x07\x0A\x05\x01\x02\x03\x04\x05"))
+        TEST(WRITES_BOTH(pb_encode(&s, IntegerContainer_msg, &msg),
+                         pb_encode_buffer(&s2, IntegerContainer_msg, &msg),
+                         "\x0A\x07\x0A\x05\x01\x02\x03\x04\x05"))
     }
     
     {
         uint8_t buffer[10];
         pb_ostream_t s;
+        pb_strstream_t s2;
         CallbackContainer msg;
         CallbackContainerContainer msg2;
         uint32_t state = 1;
         
+        COMMENT("Test pb_encode with callback field in a submessage.")
         msg.submsg.data.funcs.encode = &fieldcallback;
         msg2.submsg.submsg.data.funcs.encode = &fieldcallback;
-        
-        COMMENT("Test pb_encode with callback field in a submessage.")
         TEST(WRITES(pb_encode(&s, CallbackContainer_msg, &msg), "\x0A\x02\x08\x55"))
         TEST(WRITES(pb_encode(&s, CallbackContainerContainer_msg, &msg2),
                     "\x0A\x04\x0A\x02\x08\x55"))
+        
+        msg.submsg.data.funcs.encode_buffer = &fieldcallback_buf;
+        msg2.submsg.submsg.data.funcs.encode_buffer = &fieldcallback_buf;
+        TEST(WRITES_BUF(pb_encode_buffer(&s2, CallbackContainer_msg, &msg), "\x0A\x02\x08\x55"))
+        TEST(WRITES_BUF(pb_encode_buffer(&s2, CallbackContainerContainer_msg, &msg2),
+                        "\x0A\x04\x0A\x02\x08\x55"))
         
         /* Misbehaving callback: varying output between calls */
         msg.submsg.data.funcs.encode = &crazyfieldcallback;
@@ -267,11 +342,21 @@ int main()
         TEST(!pb_encode(&s, CallbackContainer_msg, &msg))
         state = 1;
         TEST(!pb_encode(&s, CallbackContainerContainer_msg, &msg2))
+
+        msg.submsg.data.funcs.encode_buffer = &crazyfieldcallback_buf;
+        msg.submsg.data.arg = &state;
+        msg2.submsg.submsg.data.funcs.encode_buffer = &crazyfieldcallback_buf;
+        msg2.submsg.submsg.data.arg = &state;
+        
+        TEST(!pb_encode_buffer(&s2, CallbackContainer_msg, &msg))
+        state = 1;
+        TEST(!pb_encode_buffer(&s2, CallbackContainerContainer_msg, &msg2))
     }
     
     {
-        uint8_t buffer[128];
+        uint8_t buffer[30];
         pb_ostream_t s;
+        pb_strstream_t s2;
         PointerContainer msg;
         DefaultContainer msg2;
         IntegerArray msg3;
@@ -284,8 +369,9 @@ int main()
         msg.blob.size = 1;
         msg.blob.bytes = (uint8_t*)"b";
         msg.submsg = &msg2;
-        TEST(WRITES(pb_encode(&s, PointerContainer_msg, &msg),
-                    "\x0A\x01\x61\x12\x01\x62\x1A\x00"))
+        TEST(WRITES_BOTH(pb_encode(&s, PointerContainer_msg, &msg),
+                         pb_encode_buffer(&s2, PointerContainer_msg, &msg),
+                         "\x0A\x01\x61\x12\x01\x62\x1A\x00"))
         
         memset(&msg3, 0, sizeof(msg3));
         msg.rtext_count = 1;
@@ -295,19 +381,21 @@ int main()
         msg.rblob[0].bytes = (uint8_t*)"f";
         msg.rsubmsg_count = 1;
         msg.rsubmsg[0] = &msg3;
-        TEST(WRITES(pb_encode(&s, PointerContainer_msg, &msg),
-                    "\x0A\x01\x61\x12\x01\x62\x1A\x00"
-                    "\x2A\x01\x65\x32\x01\x66\x3A\x00"));
+        TEST(WRITES_BOTH(pb_encode(&s, PointerContainer_msg, &msg),
+                         pb_encode_buffer(&s2, PointerContainer_msg, &msg),
+                         "\x0A\x01\x61\x12\x01\x62\x1A\x00"
+                         "\x2A\x01\x65\x32\x01\x66\x3A\x00"));
         
         PointerContainer_set(msg, otext);
         msg.otext = "c";
         PointerContainer_set(msg, oblob);
         msg.oblob.size = 1;
         msg.oblob.bytes = (uint8_t*)"d";
-        TEST(WRITES(pb_encode(&s, PointerContainer_msg, &msg),
-                    "\x0A\x01\x61\x12\x01\x62\x1A\x00"
-                    "\x2A\x01\x65\x32\x01\x66\x3A\x00"
-                    "\x42\x01\x63\x4A\x01\x64"));
+        TEST(WRITES_BOTH(pb_encode(&s, PointerContainer_msg, &msg),
+                         pb_encode_buffer(&s2, PointerContainer_msg, &msg),
+                         "\x0A\x01\x61\x12\x01\x62\x1A\x00"
+                         "\x2A\x01\x65\x32\x01\x66\x3A\x00"
+                         "\x42\x01\x63\x4A\x01\x64"));
     }
     
     if (status != 0)
