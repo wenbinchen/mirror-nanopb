@@ -1,11 +1,16 @@
-/* A very simple encoding test case using person.proto.
- * Just puts constant data in the fields and encodes into
- * buffer, which is then written to stdout.
+/* Same as test_encode1.c, except writes directly to stdout.
  */
 
 #include <stdio.h>
 #include <pb_encode.h>
 #include "person.pb.h"
+
+/* This binds the pb_ostream_t into the stdout stream */
+bool streamcallback(pb_ostream_t *stream, const uint8_t *buf, size_t count)
+{
+    FILE *file = (FILE*) stream->state;
+    return fwrite(buf, 1, count, file) == count;
+}
 
 int main()
 {
@@ -19,18 +24,13 @@ int main()
             {{1 << Person_PhoneNumber_type_index},
              "1234-5678", Person_PhoneType_WORK},
         }};
-
-    uint8_t buffer[512];
-    pb_ostream_t stream = pb_ostream_from_buffer(buffer, sizeof(buffer));
+    
+    /* Prepare the stream, output goes directly to stdout */
+    pb_ostream_t stream = {&streamcallback, stdout, SIZE_MAX, 0};
     
     /* Now encode it and check if we succeeded. */
     if (pb_encode(&stream, Person_msg, &person))
-    {
-        fwrite(buffer, 1, stream.bytes_written, stdout);
         return 0; /* Success */
-    }
     else
-    {
         return 1; /* Failure */
-    }
 }

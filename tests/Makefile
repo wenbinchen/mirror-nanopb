@@ -24,7 +24,9 @@ decode_ptr_unittests.o: decode_unittests.c $(DEPS)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 test_decode1: test_decode1.o pb_decode.o person.pb.o
+test_decode2: test_decode2.o pb_decode.o person.pb.o
 test_encode1: test_encode1.o pb_encode.o person.pb.o
+test_encode2: test_encode2.o pb_encode.o person.pb.o
 test_decode_callbacks: test_decode_callbacks.o pb_decode.o callbacks.pb.o
 test_encode_callbacks: test_encode_callbacks.o pb_encode.o callbacks.pb.o
 decode_unittests: decode_unittests.o pb_decode.o unittestproto.pb.o
@@ -47,7 +49,7 @@ coverage: run_unittests
 	gcov pb_decode.gcda
 	gcov pb_ptr_decode.gcda
 
-run_unittests: decode_unittests decode_ptr_unittests encode_unittests test_encode1 test_decode1 test_encode_callbacks test_decode_callbacks
+run_unittests: decode_unittests decode_ptr_unittests encode_unittests test_encode1 test_encode2 test_decode1 test_decode2 test_encode_callbacks test_decode_callbacks
 	rm -f *.gcda
 	
 	./decode_unittests > /dev/null
@@ -56,9 +58,15 @@ run_unittests: decode_unittests decode_ptr_unittests encode_unittests test_encod
 	
 	[ "`./test_encode1 | ./test_decode1`" = \
 	"`./test_encode1 | protoc --decode=Person -I. -I../generator -I/usr/include person.proto`" ]
+
+	[ "`./test_encode2 | ./test_decode1`" = \
+	"`./test_encode2 | protoc --decode=Person -I. -I../generator -I/usr/include person.proto`" ]
+
+	[ "`./test_encode2 | ./test_decode2`" = \
+	"`./test_encode2 | protoc --decode=Person -I. -I../generator -I/usr/include person.proto`" ]
 	
 	[ "`./test_encode_callbacks | ./test_decode_callbacks`" = \
 	"`./test_encode_callbacks | protoc --decode=TestMessage callbacks.proto`" ]
 
-run_fuzztest: test_decode1
-	bash -c 'I=1; while cat /dev/urandom | ./test_decode1 > /dev/null; do I=$$(($$I+1)); echo -en "\r$$I"; done'
+run_fuzztest: test_decode2
+	bash -c 'I=1; while true; do cat /dev/urandom | ./test_decode2 > /dev/null; I=$$(($$I+1)); echo -en "\r$$I"; done'
