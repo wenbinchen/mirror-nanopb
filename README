@@ -6,4 +6,13 @@ To compile the library, you'll need these libraries:
 protobuf-compiler python-protobuf libprotobuf-dev
 
 To run the tests, run make under the tests folder.
-If it completes without error, everything is fine.
+If it completes without error, everything is fine. 
+
+Code size optimization is currently only supported for 32-bit 
+architecture. If you want to run on 64-bit architecture,
+you must disable code size optimization by providing -n option to
+code generator nanopb_generator.py.  
+
+For testing purpose, you may need to pass -m32 compiler to gcc if 
+you're running on a 64-bit machine unless -n option is used for code 
+generation. 

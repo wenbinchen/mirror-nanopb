@@ -4,22 +4,22 @@ import google.protobuf.descriptor_pb2 as descriptor
 import nanopb_pb2
 import os.path
 
-# Values are tuple (c type, pb ltype)
+# Values are tuple (c type, pb ltype, memory aligned flag, common field info type)
 FieldD = descriptor.FieldDescriptorProto
 datatypes = {
-    FieldD.TYPE_BOOL: ('bool', 'PB_LTYPE_VARINT'),
-    FieldD.TYPE_DOUBLE: ('double', 'PB_LTYPE_FIXED64'),
-    FieldD.TYPE_FIXED32: ('uint32_t', 'PB_LTYPE_FIXED32'),
-    FieldD.TYPE_FIXED64: ('uint64_t', 'PB_LTYPE_FIXED64'),
-    FieldD.TYPE_FLOAT: ('float', 'PB_LTYPE_FIXED32'),
-    FieldD.TYPE_INT32: ('int32_t', 'PB_LTYPE_VARINT'),
-    FieldD.TYPE_INT64: ('int64_t', 'PB_LTYPE_VARINT'),
-    FieldD.TYPE_SFIXED32: ('int32_t', 'PB_LTYPE_FIXED32'),
-    FieldD.TYPE_SFIXED64: ('int64_t', 'PB_LTYPE_FIXED64'),
-    FieldD.TYPE_SINT32: ('int32_t', 'PB_LTYPE_SVARINT'),
-    FieldD.TYPE_SINT64: ('int64_t', 'PB_LTYPE_SVARINT'),
-    FieldD.TYPE_UINT32: ('uint32_t', 'PB_LTYPE_VARINT'),
-    FieldD.TYPE_UINT64: ('uint64_t', 'PB_LTYPE_VARINT')
+    FieldD.TYPE_BOOL: ('bool', 'PB_LTYPE_VARINT', False, 'BOOL'),
+    FieldD.TYPE_DOUBLE: ('double', 'PB_LTYPE_FIXED64', True, 'FIXED64'),
+    FieldD.TYPE_FIXED32: ('uint32_t', 'PB_LTYPE_FIXED32', True, 'FIXED32'),
+    FieldD.TYPE_FIXED64: ('uint64_t', 'PB_LTYPE_FIXED64', True, 'FIXED64'),
+    FieldD.TYPE_FLOAT: ('float', 'PB_LTYPE_FIXED32', True, 'FIXED32'),
+    FieldD.TYPE_INT32: ('int32_t', 'PB_LTYPE_VARINT', True, 'INT32'),
+    FieldD.TYPE_INT64: ('int64_t', 'PB_LTYPE_VARINT', True, 'INT64'),
+    FieldD.TYPE_SFIXED32: ('int32_t', 'PB_LTYPE_FIXED32', True, 'FIXED32'),
+    FieldD.TYPE_SFIXED64: ('int64_t', 'PB_LTYPE_FIXED64', True, 'FIXED64'),
+    FieldD.TYPE_SINT32: ('int32_t', 'PB_LTYPE_SVARINT', True, 'SINT32'),
+    FieldD.TYPE_SINT64: ('int64_t', 'PB_LTYPE_SVARINT', True, "SINT64"),
+    FieldD.TYPE_UINT32: ('uint32_t', 'PB_LTYPE_VARINT', True, 'INT32'),
+    FieldD.TYPE_UINT64: ('uint64_t', 'PB_LTYPE_VARINT', True, 'INT64')
 }
 
 class Names:
@@ -70,6 +70,9 @@ class Field:
         self.max_size = None
         self.max_count = None
         self.array_decl = ""
+        self.is_last_field = False
+        self.aligned = False
+        self.info_index = None
         
         # Parse nanopb-specific field options
         if desc.options.HasExtension(nanopb_pb2.nanopb):
@@ -104,10 +107,12 @@ class Field:
         # defining how to decode an individual value.
         # CTYPE is the name of the c type to use in the struct.
         if datatypes.has_key(desc.type):
-            self.ctype, self.ltype = datatypes[desc.type]
+            self.ctype, self.ltype, self.aligned, self.common_info_name = datatypes[desc.type]
         elif desc.type == FieldD.TYPE_ENUM:
             self.ltype = 'PB_LTYPE_VARINT'
             self.ctype = names_from_type_name(desc.type_name)
+            self.aligned = True
+            self.common_info_name = 'INT32'
             if self.default is not None:
                 self.default = self.ctype + self.default
         elif desc.type == FieldD.TYPE_STRING:
@@ -191,15 +196,33 @@ class Field:
             return 'extern const %s %s_default%s;' % (ctype, self.struct_name + self.name, array_decl)
         else:
             return 'const %s %s_default%s = %s;' % (ctype, self.struct_name + self.name, array_decl, default)
+
+    def pb_field_key_t(self):
+        '''Return the pb_field_t field key initializer to use in the constant array.
+        '''
+        result = '    {%d' % self.tag
+        if self.is_last_field:
+            result += ' | PB_LAST_FIELD'
+            
+        if self.info_index is not None:
+            result += ', %d}' % self.info_index
+        else:
+            if 'REQUIRED' in self.htype:
+                prefix = 'REQUIRED'
+            elif 'OPTIONAL' in self.htype:
+                prefix = 'OPTIONAL'
+            result += ', %s_%s_INFO}' % (prefix, self.common_info_name)
+        return result
     
     def pb_field_t(self, prev_field_name):
-        '''Return the pb_field_t initializer to use in the constant array.
+        '''Return the pb_field_t field info initializer to use in the constant array.
         prev_field_name is the name of the previous field or None.
         '''
-        result = '    {%d, ' % self.tag
+        ''' result = '    {0, '''
+        result = '    {%d, ' % self.tag        
         result += self.htype
         if self.ltype is not None:
-            result += ' | ' + self.ltype
+            result += ' | ' + self.ltype          
         result += ',\n'
         
         if prev_field_name is None:
@@ -231,14 +254,26 @@ class Field:
             result += '\n    &%s_default}' % (self.struct_name + self.name)
         
         return result
-
+    
+    def should_generate_field_info(self, prev):
+        return  g_no_optimization or not ((prev is None or prev.aligned) and (self.ltype in ['PB_LTYPE_VARINT', 'PB_LTYPE_SVARINT', 'PB_LTYPE_FIXED32', 'PB_LTYPE_FIXED64']) and (self.htype in ['PB_HTYPE_REQUIRED', 'PB_HTYPE_OPTIONAL']))
+    
 class Message:
     def __init__(self, names, desc):
         self.name = names
         self.fields = [Field(self.name, f) for f in desc.field]
         self.ordered_fields = self.fields[:]
         self.ordered_fields.sort()
-
+        if self.ordered_fields:
+            self.ordered_fields[-1].is_last_field = True
+        self.num_info = 0
+        prev = None
+        for f in self.ordered_fields:
+            if f.should_generate_field_info(prev):
+                f.info_index = self.num_info
+                self.num_info += 1
+            prev = f
+        
     def get_dependencies(self):
         '''Get list of type names that this structure refers to.'''
         return [str(field.ctype) for field in self.fields]
@@ -266,19 +301,48 @@ class Message:
         return result
 
     def fields_declaration(self):
-        result = 'extern const pb_field_t %s_fields[%d];' % (self.name, len(self.fields) + 1)
+        result = 'extern const pb_field_info_t %s_fields[1];' % self.name
+         
         return result
 
     def fields_definition(self):
-        result = 'const pb_field_t %s_fields[%d] = {\n' % (self.name, len(self.fields) + 1)
+        num_fields = len(self.fields)
         
-        prev = None
+        result = 'static const pb_field_key_t %s_field_keys[%d] = {\n' % (self.name, num_fields)
+
         for field in self.ordered_fields:
-            result += field.pb_field_t(prev)
-            result += ',\n\n'
-            prev = field.name
+            result += field.pb_field_key_t()
+            if not field.is_last_field:
+                result += ',\n'
+            prev = field                
+        result += '\n};\n\n'
+    
+        if self.num_info > 0:
+            result += 'static const pb_field_t %s_field_info[%d] = {\n' % (self.name, self.num_info)    
+            prev = None
+            for field in self.ordered_fields:
+                if field.info_index is not None:
+                    result += field.pb_field_t(prev)
+                    if field.info_index < self.num_info - 1:
+                        result += ',\n\n'
+                prev = field.name
+            result += '\n};\n\n'
         
-        result += '    PB_LAST_FIELD\n};'
+        decl = 'const pb_field_info_t %s_fields[1] = { {' % self.name
+        
+        if num_fields == 0:
+            result = decl
+            result += '\n    0,'
+            result += '\n    0' 
+        else:
+            result += decl
+            result += '\n    &%s_field_keys[0],' % self.name
+            if self.num_info > 0:
+                result += '\n    &%s_field_info[0]' % self.name
+            else:
+                result += '\n    0' 
+        result += '\n}};\n' 
+        
         return result
 
 def iterate_messages(desc, names = Names()):
@@ -310,7 +374,7 @@ def parse_file(fdesc):
         enums.append(Enum(base_name, enum))
     
     for names, message in iterate_messages(fdesc, base_name):
-        messages.append(Message(names, message))
+        messages.append(Message(names,message))
         for enum in message.enum_type:
             enums.append(Enum(names, enum))
     
@@ -401,19 +465,25 @@ def generate_source(headername, enums, messages):
 if __name__ == '__main__':
     import sys
     import os.path
+    from optparse import OptionParser
+    usage = "usage: %prog [options] file.pb\n" + \
+            "where file.pb has been compiled from .proto by:\n" + \
+            "    protoc -ofile.pb file.proto\n" + \
+            "Output fill be written to file.pb.h and file.pb.c"
+
+    parser = OptionParser(usage=usage)
+    parser.add_option('-n', '--no-opt', action='store_true', dest='no_optimization', default=False, help='disable code reduction optimization as 64-bit architecture is not supported [default=optimization on]')
+    (options, args) = parser.parse_args()
     
-    if len(sys.argv) != 2:
-        print "Usage: " + sys.argv[0] + " file.pb"
-        print "where file.pb has been compiled from .proto by:"
-        print "protoc -ofile.pb file.proto"
-        print "Output fill be written to file.pb.h and file.pb.c"
+    if len(args) != 1:
+        parser.print_help()
         sys.exit(1)
-    
-    data = open(sys.argv[1], 'rb').read()
+    g_no_optimization = options.no_optimization
+    data = open(args[0], 'rb').read()
     fdesc = descriptor.FileDescriptorSet.FromString(data)
     enums, messages = parse_file(fdesc.file[0])
     
-    noext = os.path.splitext(sys.argv[1])[0]
+    noext = os.path.splitext(args[0])[0]
     headername = noext + '.pb.h'
     sourcename = noext + '.pb.c'
     headerbasename = os.path.basename(headername)

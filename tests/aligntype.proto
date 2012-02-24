@@ -1,0 +1,80 @@
+import "nanopb.proto";
+
+message SubMessage {
+    required string substuff1 = 1 [(nanopb).max_size = 16];
+    required int32 substuff2 = 2;
+}
+
+enum MyEnum {
+    First = 1;
+    Second = 2;
+    Truth = 42;
+}
+
+message AlignTypes {
+    required bool       req_bool    = 1;
+    required int32      req_int32   = 2;
+    required SubMessage req_submsg  = 3;
+    required int64      req_int64   = 4;
+    required string     req_string  = 5 [(nanopb).max_size = 16];
+    required MyEnum     req_enum    = 6;
+    required bytes      req_bytes   = 7 [(nanopb).max_size = 16];
+    required sint32     req_sint32  = 8;
+    required bool       req_bool_2  = 9;
+    required sint64     req_sint64  = 10;
+    required bool       req_bool_3  = 11;
+    required fixed32    req_fixed32 = 12;
+    required bool       req_bool_4  = 13;
+    required fixed64    req_fixed64 = 14;
+    required bool       req_bool_5  = 15;
+    required float      req_float   = 16;
+    required bool       req_bool_6  = 17;
+    required double     req_double  = 18;
+
+    optional bool       opt_bool    = 19;
+    optional int32      opt_int32   = 20;
+    optional SubMessage opt_submsg  = 21;
+    optional int64      opt_int64   = 22;
+    optional string     opt_string  = 23 [(nanopb).max_size = 16];
+    optional MyEnum     opt_enum    = 24;
+    optional bytes      opt_bytes   = 25 [(nanopb).max_size = 16];
+    optional sint32     opt_sint32  = 26;
+    optional bool       opt_bool_2  = 27;
+    optional sint64     opt_sint64  = 28;
+    optional bool       opt_bool_3  = 29;
+    optional fixed32    opt_fixed32 = 30;
+    optional bool       opt_bool_4  = 31;
+    optional fixed64    opt_fixed64 = 32;
+    optional bool       opt_bool_5  = 33;
+    optional float      opt_float   = 34;
+    optional bool       opt_bool_6  = 35;
+    optional double     opt_double  = 36;
+
+    required bool       req_bool_aligned    = 37; 
+    required int32      req_int32_aligned   = 38;
+    required int64      req_int64_aligned   = 39;
+    required MyEnum     req_enum_aligned    = 40;
+    required sint32     req_sint32_aligned  = 41;
+    required sint64     req_sint64_aligned  = 42;
+    required fixed32    req_fixed32_aligned = 43;
+    required fixed64    req_fixed64_aligned = 44;
+    required float      req_float_aligned   = 45;
+    required double     req_double_aligned  = 46;
+
+    optional bool       opt_bool_aligned    = 47;
+    optional int32      opt_int32_aligned   = 48;
+    optional int64      opt_int64_aligned   = 49;
+    optional MyEnum     opt_enum_aligned    = 50;
+    optional sint32     opt_sint32_aligned  = 51;
+    optional sint64     opt_sint64_aligned  = 52;
+    optional fixed32    opt_fixed32_aligned = 53;
+    optional fixed64    opt_fixed64_aligned = 54;
+    optional float      opt_float_aligned   = 55;
+    optional double     opt_double_aligned  = 56;
+
+
+    // Just to make sure that the size of the fields has been calculated
+    // properly, i.e. otherwise a bug in last field might not be detected.
+    required int32      end = 99;
+}
+

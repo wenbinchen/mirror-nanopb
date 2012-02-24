@@ -75,7 +75,7 @@ bool checkreturn pb_write(pb_ostream_t *stream, const uint8_t *buf, size_t count
 static bool checkreturn encode_array(pb_ostream_t *stream, const pb_field_t *field,
                          const void *pData, size_t count, pb_encoder_t func)
 {
-    int i;
+    size_t i;
     const void *p;
     size_t size;
     
@@ -98,7 +98,7 @@ static bool checkreturn encode_array(pb_ostream_t *stream, const pb_field_t *fie
         }
         else
         {
-            pb_ostream_t sizestream = {0};
+            pb_ostream_t sizestream = PB_OSTREAM_INIT;
             p = pData;
             for (i = 0; i < count; i++)
             {
@@ -140,15 +140,19 @@ static bool checkreturn encode_array(pb_ostream_t *stream, const pb_field_t *fie
     return true;
 }
 
-bool checkreturn pb_encode(pb_ostream_t *stream, const pb_field_t fields[], const void *src_struct)
+bool checkreturn pb_encode(pb_ostream_t *stream, const pb_field_info_t *fields, const void *src_struct)
 {
-    const pb_field_t *field = fields;
+    const pb_field_t *field;
+    const pb_field_key_t *field_key = fields->field_keys;
     const void *pData = src_struct;
     const void *pSize;
     size_t prev_size = 0;
     
-    while (field->tag != 0)
+    while(field_key != NULL)
     {
+        pb_field_t f = *(PB_FIELD_INFO(field_key, fields->field_info));
+        f.tag = PB_TAG_VAL(field_key);
+        field = &f;
         pb_encoder_t func = PB_ENCODERS[PB_LTYPE(field->type)];
         pData = (const char*)pData + prev_size + field->data_offset;
         pSize = (const char*)pData + field->size_offset;
@@ -193,11 +197,18 @@ bool checkreturn pb_encode(pb_ostream_t *stream, const pb_field_t fields[], cons
                 break;
             }
         }
-    
-        field++;
+        if (PB_IS_LAST(field_key++)) break;
     }
     
     return true;
+}
+
+int checkreturn pb_get_message_size(const pb_field_info_t *fields, const void *src_struct)
+{
+    pb_ostream_t ostream = PB_OSTREAM_INIT;
+    if (pb_encode(&ostream, fields, &src_struct))
+        return ostream.bytes_written;
+    return -1;
 }
 
 /* Helper functions */
@@ -345,14 +356,14 @@ bool checkreturn pb_enc_string(pb_ostream_t *stream, const pb_field_t *field, co
 
 bool checkreturn pb_enc_submessage(pb_ostream_t *stream, const pb_field_t *field, const void *src)
 {
-    pb_ostream_t substream = {0};
+    pb_ostream_t substream = {0, 0, 0, 0};
     size_t size;
     bool status;
     
     if (field->ptr == NULL)
         return false;
     
-    if (!pb_encode(&substream, (pb_field_t*)field->ptr, src))
+    if (!pb_encode(&substream, (pb_field_info_t*)field->ptr, src))
         return false;
     
     size = substream.bytes_written;
@@ -373,7 +384,7 @@ bool checkreturn pb_enc_submessage(pb_ostream_t *stream, const pb_field_t *field
     substream.max_size = size;
     substream.bytes_written = 0;
     
-    status = pb_encode(&substream, (pb_field_t*)field->ptr, src);
+    status = pb_encode(&substream, (pb_field_info_t*)field->ptr, src);
     
     stream->bytes_written += substream.bytes_written;
     stream->state = substream.state;

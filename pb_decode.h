@@ -42,7 +42,7 @@ bool pb_read(pb_istream_t *stream, uint8_t *buf, size_t count);
  * Returns true on success, false on any failure.
  * The actual struct pointed to by dest must match the description in fields.
  */
-bool pb_decode(pb_istream_t *stream, const pb_field_t fields[], void *dest_struct);
+bool pb_decode(pb_istream_t *stream, const pb_field_info_t *fields, void *dest_struct);
 
 /* --- Helper functions ---
  * You may want to use these from your caller or callbacks.
@@ -67,5 +67,7 @@ bool pb_dec_fixed64(pb_istream_t *stream, const pb_field_t *field, void *dest);
 bool pb_dec_bytes(pb_istream_t *stream, const pb_field_t *field, void *dest);
 bool pb_dec_string(pb_istream_t *stream, const pb_field_t *field, void *dest);
 bool pb_dec_submessage(pb_istream_t *stream, const pb_field_t *field, void *dest);
+
+#define PB_ISTREAM_INIT {0,0,0}
 
 #endif

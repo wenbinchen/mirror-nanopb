@@ -42,7 +42,9 @@ bool pb_write(pb_ostream_t *stream, const uint8_t *buf, size_t count);
  * The actual struct pointed to by src_struct must match the description in fields.
  * All required fields in the struct are assumed to have been filled in.
  */
-bool pb_encode(pb_ostream_t *stream, const pb_field_t fields[], const void *src_struct);
+bool pb_encode(pb_ostream_t *stream, const pb_field_info_t *fields, const void *src_struct);
+
+int pb_get_message_size(const pb_field_info_t *fields, const void *src_struct);
 
 /* --- Helper functions ---
  * You may want to use these from your caller or callbacks.
@@ -69,4 +71,5 @@ bool pb_enc_bytes(pb_ostream_t *stream, const pb_field_t *field, const void *src
 bool pb_enc_string(pb_ostream_t *stream, const pb_field_t *field, const void *src);
 bool pb_enc_submessage(pb_ostream_t *stream, const pb_field_t *field, const void *src);
 
+#define PB_OSTREAM_INIT {0,0,0,0}
 #endif
