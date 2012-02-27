@@ -206,7 +206,7 @@ bool checkreturn pb_encode(pb_ostream_t *stream, const pb_field_info_t *fields, 
 int checkreturn pb_get_message_size(const pb_field_info_t *fields, const void *src_struct)
 {
     pb_ostream_t ostream = PB_OSTREAM_INIT;
-    if (pb_encode(&ostream, fields, &src_struct))
+    if (pb_encode(&ostream, fields, src_struct))
         return ostream.bytes_written;
     return -1;
 }
