@@ -62,6 +62,9 @@ bool pb_decode(pb_istream_t *stream, const pb_field_t fields[], void *dest_struc
 /* Same as pb_decode, except does not initialize the destination structure
  * to default values. This is slightly faster if you need no default values
  * and just do memset(struct, 0, sizeof(struct)) yourself.
+ *
+ * It can also be used to merge fields from a new message into a previously
+ * initialized structure.
  */
 bool pb_decode_noinit(pb_istream_t *stream, const pb_field_t fields[], void *dest_struct);
 

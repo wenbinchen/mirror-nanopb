@@ -331,19 +331,6 @@ static bool pb_field_next(pb_field_iterator_t *iter)
     return notwrapped;
 }
 
-static bool checkreturn pb_field_find(pb_field_iterator_t *iter, uint32_t tag)
-{
-    unsigned start = iter->field_index;
-    
-    do {
-        if (iter->pos->tag == tag)
-            return true;
-        pb_field_next(iter);
-    } while (iter->field_index != start);
-    
-    return false;
-}
-
 /*************************
  * Decode a single field *
  *************************/
@@ -472,71 +459,105 @@ static bool checkreturn decode_field(pb_istream_t *stream, pb_wire_type_t wire_t
     }
 }
 
-/* Initialize message fields to default values, recursively */
-static void pb_message_set_to_defaults(const pb_field_t fields[], void *dest_struct)
+/* Set field count to zero (or clear has_ field). */
+static void pb_clear_field_count(const pb_field_iterator_t *iter)
 {
-    pb_field_iterator_t iter;
-    pb_field_init(&iter, fields, dest_struct);
+    pb_type_t type;
+    type = iter->pos->type;
     
-    /* Initialize size/has fields and apply default values */
-    do
+    if (iter->pos->tag == 0)
+        return; /* Empty message type */
+
+    if (PB_ATYPE(type) == PB_ATYPE_STATIC)
     {
-        pb_type_t type;
-        type = iter.pos->type;
-    
-        if (iter.pos->tag == 0)
-            continue;
-        
-        if (PB_ATYPE(type) == PB_ATYPE_STATIC)
+        if (PB_HTYPE(type) == PB_HTYPE_OPTIONAL)
         {
-            /* Initialize the size field for optional/repeated fields to 0. */
-            if (PB_HTYPE(type) == PB_HTYPE_OPTIONAL)
-            {
-                *(bool*)iter.pSize = false;
-            }
-            else if (PB_HTYPE(type) == PB_HTYPE_REPEATED)
-            {
-                *(size_t*)iter.pSize = 0;
-                continue; /* Array is empty, no need to initialize contents */
-            }
-            
-            /* Initialize field contents to default value */
-            if (PB_LTYPE(iter.pos->type) == PB_LTYPE_SUBMESSAGE)
-            {
-                pb_message_set_to_defaults((const pb_field_t *) iter.pos->ptr, iter.pData);
-            }
-            else if (iter.pos->ptr != NULL)
-            {
-                memcpy(iter.pData, iter.pos->ptr, iter.pos->data_size);
-            }
-            else
-            {
-                memset(iter.pData, 0, iter.pos->data_size);
-            }
+            *(bool*)iter->pSize = false;
         }
-        else if (PB_ATYPE(type) == PB_ATYPE_CALLBACK)
+        else if (PB_HTYPE(type) == PB_HTYPE_REPEATED)
         {
-            continue; /* Don't overwrite callback */
+            *(size_t*)iter->pSize = 0;
         }
-    } while (pb_field_next(&iter));
+    }
+}
+
+/* Initialize message field to default value. Recurses on submessages. */
+static void pb_set_field_to_default(const pb_field_iterator_t *iter)
+{
+    pb_type_t type;
+    type = iter->pos->type;
+
+    if (iter->pos->tag == 0)
+        return; /* Empty message type */
+
+    /* We only need to initialize static fields.
+     * Furthermore, arrays do not need to be initialized as their length
+     * will be zero by default.
+     */
+    if (PB_ATYPE(type) == PB_ATYPE_STATIC &&
+        PB_HTYPE(type) != PB_HTYPE_REPEATED)
+    {
+        if (PB_LTYPE(iter->pos->type) == PB_LTYPE_SUBMESSAGE)
+        {
+            /* Submessage: initialize the fields recursively */
+            pb_field_iterator_t subiter;
+            pb_field_init(&subiter, (const pb_field_t *)iter->pos->ptr, iter->pData);
+            do {
+                pb_clear_field_count(&subiter);
+                pb_set_field_to_default(&subiter);
+            } while (pb_field_next(&subiter));
+        }
+        else if (iter->pos->ptr != NULL)
+        {
+            /* Normal field: copy the default value */
+            memcpy(iter->pData, iter->pos->ptr, iter->pos->data_size);
+        }
+        else
+        {
+            /* Normal field without default value: initialize to zero */
+            memset(iter->pData, 0, iter->pos->data_size);
+        }
+    }
 }
 
 /*********************
  * Decode all fields *
  *********************/
 
-bool checkreturn pb_decode_noinit(pb_istream_t *stream, const pb_field_t fields[], void *dest_struct)
+/* Helper function to initialize fields while advancing iterator */
+static void advance_iterator(pb_field_iterator_t *iter, bool *initialize, bool *current_seen)
+{
+    /* Initialize the fields we didn't decode. */
+    if (*initialize && !*current_seen)
+        pb_set_field_to_default(iter);
+    
+    /* Stop initializing after the first pass through the array */
+    if (!pb_field_next(iter))
+        *initialize = false;
+    
+    /* Clear the field count before decoding */
+    if (*initialize)
+        pb_clear_field_count(iter);
+    
+    /* Reset the flag to indicate that the new field has not been written to yet. */
+    *current_seen = false;
+}
+
+static bool checkreturn pb_decode_inner(pb_istream_t *stream, const pb_field_t fields[], void *dest_struct, bool initialize)
 {
     uint8_t fields_seen[(PB_MAX_REQUIRED_FIELDS + 7) / 8] = {0}; /* Used to check for required fields */
+    bool current_seen = false;
     pb_field_iterator_t iter;
-    
     pb_field_init(&iter, fields, dest_struct);
+    pb_clear_field_count(&iter);
     
     while (stream->bytes_left)
     {
         uint32_t tag;
         pb_wire_type_t wire_type;
         bool eof;
+        unsigned start;
+        bool skip = false;
         
         if (!pb_decode_tag(stream, &wire_type, &tag, &eof))
         {
@@ -546,20 +567,45 @@ bool checkreturn pb_decode_noinit(pb_istream_t *stream, const pb_field_t fields[
                 return false;
         }
         
-        if (!pb_field_find(&iter, tag))
+        /* Go through the fields until we either find a match or
+         * wrap around to start. On the first pass, also initialize
+         * any missing fields.
+         * 
+         * The logic here is to avoid unnecessary initialization
+         * in the common case, where all fields occur in the proper
+         * order.
+         */
+        start = iter.field_index;
+        while (iter.pos->tag != tag)
         {
-            /* No match found, skip data */
+            advance_iterator(&iter, &initialize, &current_seen);
+            
+            if (iter.field_index == start)
+            {
+                skip = true;
+                break;
+            }
+        }
+        
+        /* Skip data if field was not found */
+        if (skip)
+        {
             if (!pb_skip_field(stream, wire_type))
                 return false;
+
             continue;
         }
         
+        current_seen = true;
+        
+        /* Keep track if all required fields are present */
         if (PB_HTYPE(iter.pos->type) == PB_HTYPE_REQUIRED
             && iter.required_field_index < PB_MAX_REQUIRED_FIELDS)
         {
             fields_seen[iter.required_field_index >> 3] |= (uint8_t)(1 << (iter.required_field_index & 7));
         }
             
+        /* Finally, decode the field data */
         if (!decode_field(stream, wire_type, &iter))
             return false;
     }
@@ -569,6 +615,9 @@ bool checkreturn pb_decode_noinit(pb_istream_t *stream, const pb_field_t fields[
         /* First figure out the number of required fields by
          * seeking to the end of the field array. Usually we
          * are already close to end after decoding.
+         *
+         * Note: this simultaneously initializes any fields
+         * that haven't been already initialized.
          */
         unsigned req_field_count;
         pb_type_t last_type;
@@ -576,7 +625,8 @@ bool checkreturn pb_decode_noinit(pb_istream_t *stream, const pb_field_t fields[
         do {
             req_field_count = iter.required_field_index;
             last_type = iter.pos->type;
-        } while (pb_field_next(&iter));
+            advance_iterator(&iter, &initialize, &current_seen);
+        } while (iter.field_index != 0);
         
         /* Fixup if last field was also required. */
         if (PB_HTYPE(last_type) == PB_HTYPE_REQUIRED && iter.pos->tag)
@@ -597,10 +647,14 @@ bool checkreturn pb_decode_noinit(pb_istream_t *stream, const pb_field_t fields[
     return true;
 }
 
+bool checkreturn pb_decode_noinit(pb_istream_t *stream, const pb_field_t fields[], void *dest_struct)
+{
+    return pb_decode_inner(stream, fields, dest_struct, false);
+}
+
 bool checkreturn pb_decode(pb_istream_t *stream, const pb_field_t fields[], void *dest_struct)
 {
-    pb_message_set_to_defaults(fields, dest_struct);
-    return pb_decode_noinit(stream, fields, dest_struct);
+    return pb_decode_inner(stream, fields, dest_struct, true);
 }
 
 /* Field decoders */
@@ -749,12 +803,7 @@ bool checkreturn pb_dec_submessage(pb_istream_t *stream, const pb_field_t *field
     if (field->ptr == NULL)
         PB_RETURN_ERROR(stream, "invalid field descriptor");
     
-    /* New array entries need to be initialized, while required and optional
-     * submessages have already been initialized in the top-level pb_decode. */
-    if (PB_HTYPE(field->type) == PB_HTYPE_REPEATED)
-        status = pb_decode(&substream, submsg_fields, dest);
-    else
-        status = pb_decode_noinit(&substream, submsg_fields, dest);
+    status = pb_decode(&substream, submsg_fields, dest);
     
     pb_close_string_substream(stream, &substream);
     return status;
