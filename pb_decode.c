@@ -313,28 +313,23 @@ static bool checkreturn read_raw_value(pb_istream_t *stream, pb_wire_type_t wire
 /* Decode string length from stream and return a substream with limited length.
  * Remember to close the substream using pb_close_string_substream().
  */
-bool checkreturn pb_make_string_substream(pb_istream_t *stream, pb_istream_t *substream)
+bool checkreturn pb_make_string_substream(pb_istream_t *stream, size_t *remaining_length)
 {
     uint32_t size;
     if (!pb_decode_varint32(stream, &size))
         return false;
-    
-    *substream = *stream;
-    if (substream->bytes_left < size)
+
+    if (stream->bytes_left < size)
         PB_RETURN_ERROR(stream, "parent stream too short");
     
-    substream->bytes_left = size;
-    stream->bytes_left -= size;
+    *remaining_length = stream->bytes_left - size;
+    stream->bytes_left = size;
     return true;
 }
 
-void pb_close_string_substream(pb_istream_t *stream, pb_istream_t *substream)
+void pb_close_string_substream(pb_istream_t *stream, size_t remaining_length)
 {
-    stream->state = substream->state;
-
-#ifndef PB_NO_ERRMSG
-    stream->errmsg = substream->errmsg;
-#endif
+    stream->bytes_left += remaining_length;
 }
 
 static void pb_field_init(pb_field_iterator_t *iter, const pb_field_t *fields, void *dest_struct)
@@ -425,24 +420,25 @@ static bool checkreturn decode_static_field(pb_istream_t *stream, pb_wire_type_t
                 /* Packed array */
                 bool status = true;
                 size_t *size = (size_t*)iter->pSize;
-                pb_istream_t substream;
-                if (!pb_make_string_substream(stream, &substream))
+                size_t remaining_length;
+                if (!pb_make_string_substream(stream, &remaining_length))
                     return false;
                 
-                while (substream.bytes_left && *size < iter->pos->array_size)
+                while (stream->bytes_left)
                 {
                     void *pItem = (uint8_t*)iter->pData + iter->pos->data_size * (*size);
-                    if (!func(&substream, iter->pos, pItem))
+                    
+                    if (*size >= iter->pos->array_size)
+                        PB_RETURN_ERROR(stream, "array overflow");
+                
+                    if (!func(stream, iter->pos, pItem))
                     {
                         status = false;
                         break;
                     }
                     (*size)++;
                 }
-                pb_close_string_substream(stream, &substream);
-                
-                if (substream.bytes_left != 0)
-                    PB_RETURN_ERROR(stream, "array overflow");
+                pb_close_string_substream(stream, remaining_length);
                 
                 return status;
             }
@@ -478,18 +474,18 @@ static bool checkreturn decode_callback_field(pb_istream_t *stream, pb_wire_type
     
     if (wire_type == PB_WT_STRING)
     {
-        pb_istream_t substream;
+        size_t remaining_length;
         
-        if (!pb_make_string_substream(stream, &substream))
+        if (!pb_make_string_substream(stream, &remaining_length))
             return false;
         
         do
         {
-            if (!pCallback->funcs.decode(&substream, iter->pos, arg))
+            if (!pCallback->funcs.decode(stream, iter->pos, arg))
                 PB_RETURN_ERROR(stream, "callback failed");
-        } while (substream.bytes_left);
+        } while (stream->bytes_left);
         
-        pb_close_string_substream(stream, &substream);
+        pb_close_string_substream(stream, remaining_length);
         return true;
     }
     else
@@ -746,14 +742,14 @@ bool checkreturn pb_decode(pb_istream_t *stream, const pb_field_t fields[], void
 
 bool pb_decode_delimited(pb_istream_t *stream, const pb_field_t fields[], void *dest_struct)
 {
-    pb_istream_t substream;
+    size_t remaining_length;
     bool status;
     
-    if (!pb_make_string_substream(stream, &substream))
+    if (!pb_make_string_substream(stream, &remaining_length))
         return false;
     
-    status = pb_decode(&substream, fields, dest_struct);
-    pb_close_string_substream(stream, &substream);
+    status = pb_decode(stream, fields, dest_struct);
+    pb_close_string_substream(stream, remaining_length);
     return status;
 }
 
@@ -896,10 +892,10 @@ bool checkreturn pb_dec_string(pb_istream_t *stream, const pb_field_t *field, vo
 bool checkreturn pb_dec_submessage(pb_istream_t *stream, const pb_field_t *field, void *dest)
 {
     bool status;
-    pb_istream_t substream;
+    size_t remaining_length;
     const pb_field_t* submsg_fields = (const pb_field_t*)field->ptr;
     
-    if (!pb_make_string_substream(stream, &substream))
+    if (!pb_make_string_substream(stream, &remaining_length))
         return false;
     
     if (field->ptr == NULL)
@@ -908,10 +904,10 @@ bool checkreturn pb_dec_submessage(pb_istream_t *stream, const pb_field_t *field
     /* New array entries need to be initialized, while required and optional
      * submessages have already been initialized in the top-level pb_decode. */
     if (PB_HTYPE(field->type) == PB_HTYPE_REPEATED)
-        status = pb_decode(&substream, submsg_fields, dest);
+        status = pb_decode(stream, submsg_fields, dest);
     else
-        status = pb_decode_noinit(&substream, submsg_fields, dest);
+        status = pb_decode_noinit(stream, submsg_fields, dest);
     
-    pb_close_string_substream(stream, &substream);
+    pb_close_string_substream(stream, remaining_length);
     return status;
 }
