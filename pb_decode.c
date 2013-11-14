@@ -39,6 +39,7 @@ static bool checkreturn read_raw_value(pb_istream_t *stream, pb_wire_type_t wire
 static void pb_field_init(pb_field_iterator_t *iter, const pb_field_t *fields, void *dest_struct);
 static bool pb_field_next(pb_field_iterator_t *iter);
 static bool checkreturn pb_field_find(pb_field_iterator_t *iter, uint32_t tag);
+static bool checkreturn decode_ltype(pb_istream_t *stream, const pb_field_t *field, void *dest, pb_type_t type);
 static bool checkreturn decode_static_field(pb_istream_t *stream, pb_wire_type_t wire_type, pb_field_iterator_t *iter);
 static bool checkreturn decode_callback_field(pb_istream_t *stream, pb_wire_type_t wire_type, pb_field_iterator_t *iter);
 static bool checkreturn decode_field(pb_istream_t *stream, pb_wire_type_t wire_type, pb_field_iterator_t *iter);
@@ -394,7 +395,7 @@ static bool checkreturn decode_ltype(pb_istream_t *stream,
         case PB_LTYPE_STRING:       return pb_dec_string(stream, field, dest);
         case PB_LTYPE_SUBMESSAGE:   return pb_dec_submessage(stream, field, dest);
         
-        default: PB_RETURN_ERROR(stream, "invalid LTYPE");
+        default: PB_RETURN_ERROR(stream, "invalid field type");
     }
 }
 

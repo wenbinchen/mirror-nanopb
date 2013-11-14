@@ -20,10 +20,9 @@
 /**************************************
  * Declarations internal to this file *
  **************************************/
-typedef bool (*pb_encoder_t)(pb_ostream_t *stream, const pb_field_t *field, const void *src) checkreturn;
-
 static bool checkreturn buf_write(pb_ostream_t *stream, const uint8_t *buf, size_t count);
-static bool checkreturn encode_array(pb_ostream_t *stream, const pb_field_t *field, const void *pData, size_t count, pb_encoder_t func);
+static bool checkreturn encode_ltype(pb_ostream_t *stream, const pb_field_t *field, const void *src, pb_type_t type);
+static bool checkreturn encode_array(pb_ostream_t *stream, const pb_field_t *field, const void *pData, size_t count);
 static bool checkreturn encode_field(pb_ostream_t *stream, const pb_field_t *field, const void *pData);
 static bool checkreturn default_extension_encoder(pb_ostream_t *stream, const pb_extension_t *extension);
 static bool checkreturn encode_extension_field(pb_ostream_t *stream, const pb_field_t *field, const void *pData);
@@ -34,21 +33,6 @@ static bool checkreturn pb_enc_fixed64(pb_ostream_t *stream, const pb_field_t *f
 static bool checkreturn pb_enc_bytes(pb_ostream_t *stream, const pb_field_t *field, const void *src);
 static bool checkreturn pb_enc_string(pb_ostream_t *stream, const pb_field_t *field, const void *src);
 static bool checkreturn pb_enc_submessage(pb_ostream_t *stream, const pb_field_t *field, const void *src);
-
-/* --- Function pointers to field encoders ---
- * Order in the array must match pb_action_t LTYPE numbering.
- */
-static const pb_encoder_t PB_ENCODERS[PB_LTYPES_COUNT] = {
-    &pb_enc_varint,
-    &pb_enc_svarint,
-    &pb_enc_fixed32,
-    &pb_enc_fixed64,
-    
-    &pb_enc_bytes,
-    &pb_enc_string,
-    &pb_enc_submessage,
-    NULL /* extensions */
-};
 
 /*******************************
  * pb_ostream_t implementation *
@@ -106,9 +90,28 @@ bool checkreturn pb_write(pb_ostream_t *stream, const uint8_t *buf, size_t count
  * Encode a single field *
  *************************/
 
+/* Invoke an encoder function based on the ltype of a field. */
+static bool checkreturn encode_ltype(pb_ostream_t *stream,
+    const pb_field_t *field, const void *src, pb_type_t type)
+{
+    switch (PB_LTYPE(type))
+    {
+        case PB_LTYPE_VARINT:       return pb_enc_varint(stream, field, src);
+        case PB_LTYPE_SVARINT:      return pb_enc_svarint(stream, field, src);
+        case PB_LTYPE_FIXED32:      return pb_enc_fixed32(stream, field, src);
+        case PB_LTYPE_FIXED64:      return pb_enc_fixed64(stream, field, src);
+        case PB_LTYPE_BYTES:        return pb_enc_bytes(stream, field, src);
+        case PB_LTYPE_STRING:       return pb_enc_string(stream, field, src);
+        case PB_LTYPE_SUBMESSAGE:   return pb_enc_submessage(stream, field, src);
+        
+        default: PB_RETURN_ERROR(stream, "invalid field type");
+    }
+}
+    
+
 /* Encode a static array. Handles the size calculations and possible packing. */
 static bool checkreturn encode_array(pb_ostream_t *stream, const pb_field_t *field,
-                         const void *pData, size_t count, pb_encoder_t func)
+                         const void *pData, size_t count)
 {
     size_t i;
     const void *p;
@@ -141,7 +144,7 @@ static bool checkreturn encode_array(pb_ostream_t *stream, const pb_field_t *fie
             p = pData;
             for (i = 0; i < count; i++)
             {
-                if (!func(&sizestream, field, p))
+                if (!encode_ltype(&sizestream, field, p, field->type))
                     return false;
                 p = (const char*)p + field->data_size;
             }
@@ -158,7 +161,7 @@ static bool checkreturn encode_array(pb_ostream_t *stream, const pb_field_t *fie
         p = pData;
         for (i = 0; i < count; i++)
         {
-            if (!func(stream, field, p))
+            if (!encode_ltype(stream, field, p, field->type))
                 return false;
             p = (const char*)p + field->data_size;
         }
@@ -170,7 +173,7 @@ static bool checkreturn encode_array(pb_ostream_t *stream, const pb_field_t *fie
         {
             if (!pb_encode_tag_for_field(stream, field))
                 return false;
-            if (!func(stream, field, p))
+            if (!encode_ltype(stream, field, p, field->type))
                 return false;
             p = (const char*)p + field->data_size;
         }
@@ -184,11 +187,8 @@ static bool checkreturn encode_array(pb_ostream_t *stream, const pb_field_t *fie
 static bool checkreturn encode_static_field(pb_ostream_t *stream,
     const pb_field_t *field, const void *pData)
 {
-    pb_encoder_t func;
     const void *pSize;
     bool dummy = true;
-    
-    func = PB_ENCODERS[PB_LTYPE(field->type)];
     
     if (field->size_offset)
         pSize = (const char*)pData + field->size_offset;
@@ -200,7 +200,7 @@ static bool checkreturn encode_static_field(pb_ostream_t *stream,
         case PB_HTYPE_REQUIRED:
             if (!pb_encode_tag_for_field(stream, field))
                 return false;
-            if (!func(stream, field, pData))
+            if (!encode_ltype(stream, field, pData, field->type))
                 return false;
             break;
         
@@ -210,13 +210,13 @@ static bool checkreturn encode_static_field(pb_ostream_t *stream,
                 if (!pb_encode_tag_for_field(stream, field))
                     return false;
             
-                if (!func(stream, field, pData))
+                if (!encode_ltype(stream, field, pData, field->type))
                     return false;
             }
             break;
         
         case PB_HTYPE_REPEATED:
-            if (!encode_array(stream, field, pData, *(const size_t*)pSize, func))
+            if (!encode_array(stream, field, pData, *(const size_t*)pSize))
                 return false;
             break;
         
