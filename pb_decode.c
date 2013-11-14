@@ -32,7 +32,6 @@ typedef struct {
     void *pSize; /* Pointer where to store the size of current array field */
 } pb_field_iterator_t;
 
-typedef bool (*pb_decoder_t)(pb_istream_t *stream, const pb_field_t *field, void *dest) checkreturn;
 
 static bool checkreturn buf_read(pb_istream_t *stream, uint8_t *buf, size_t count);
 static bool checkreturn pb_decode_varint32(pb_istream_t *stream, uint32_t *dest);
@@ -56,21 +55,6 @@ static bool checkreturn pb_dec_string(pb_istream_t *stream, const pb_field_t *fi
 static bool checkreturn pb_dec_submessage(pb_istream_t *stream, const pb_field_t *field, void *dest);
 static bool checkreturn pb_skip_varint(pb_istream_t *stream);
 static bool checkreturn pb_skip_string(pb_istream_t *stream);
-
-/* --- Function pointers to field decoders ---
- * Order in the array must match pb_action_t LTYPE numbering.
- */
-static const pb_decoder_t PB_DECODERS[PB_LTYPES_COUNT] = {
-    &pb_dec_varint,
-    &pb_dec_svarint,
-    &pb_dec_fixed32,
-    &pb_dec_fixed64,
-    
-    &pb_dec_bytes,
-    &pb_dec_string,
-    &pb_dec_submessage,
-    NULL /* extensions */
-};
 
 /*******************************
  * pb_istream_t implementation *
@@ -396,22 +380,37 @@ static bool checkreturn pb_field_find(pb_field_iterator_t *iter, uint32_t tag)
  * Decode a single field *
  *************************/
 
+/* Invoke a decoder function based on the ltype of a field. */
+static bool checkreturn decode_ltype(pb_istream_t *stream,
+    const pb_field_t *field, void *dest, pb_type_t type)
+{
+    switch (PB_LTYPE(type))
+    {
+        case PB_LTYPE_VARINT:       return pb_dec_varint(stream, field, dest);
+        case PB_LTYPE_SVARINT:      return pb_dec_svarint(stream, field, dest);
+        case PB_LTYPE_FIXED32:      return pb_dec_fixed32(stream, field, dest);
+        case PB_LTYPE_FIXED64:      return pb_dec_fixed64(stream, field, dest);
+        case PB_LTYPE_BYTES:        return pb_dec_bytes(stream, field, dest);
+        case PB_LTYPE_STRING:       return pb_dec_string(stream, field, dest);
+        case PB_LTYPE_SUBMESSAGE:   return pb_dec_submessage(stream, field, dest);
+        
+        default: PB_RETURN_ERROR(stream, "invalid LTYPE");
+    }
+}
+
 static bool checkreturn decode_static_field(pb_istream_t *stream, pb_wire_type_t wire_type, pb_field_iterator_t *iter)
 {
     pb_type_t type;
-    pb_decoder_t func;
-    
     type = iter->pos->type;
-    func = PB_DECODERS[PB_LTYPE(type)];
 
     switch (PB_HTYPE(type))
     {
         case PB_HTYPE_REQUIRED:
-            return func(stream, iter->pos, iter->pData);
+            return decode_ltype(stream, iter->pos, iter->pData, type);
             
         case PB_HTYPE_OPTIONAL:
             *(bool*)iter->pSize = true;
-            return func(stream, iter->pos, iter->pData);
+            return decode_ltype(stream, iter->pos, iter->pData, type);
     
         case PB_HTYPE_REPEATED:
             if (wire_type == PB_WT_STRING
@@ -431,7 +430,7 @@ static bool checkreturn decode_static_field(pb_istream_t *stream, pb_wire_type_t
                     if (*size >= iter->pos->array_size)
                         PB_RETURN_ERROR(stream, "array overflow");
                 
-                    if (!func(stream, iter->pos, pItem))
+                    if (!decode_ltype(stream, iter->pos, pItem, type))
                     {
                         status = false;
                         break;
@@ -451,7 +450,7 @@ static bool checkreturn decode_static_field(pb_istream_t *stream, pb_wire_type_t
                     PB_RETURN_ERROR(stream, "array overflow");
                 
                 (*size)++;
-                return func(stream, iter->pos, pItem);
+                return decode_ltype(stream, iter->pos, pItem, type);
             }
 
         default:
