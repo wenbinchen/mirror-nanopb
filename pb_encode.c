@@ -116,8 +116,8 @@ static bool checkreturn encode_array(pb_ostream_t *stream, const pb_field_t *fie
     
     if (count == 0)
         return true;
-        
-    if (count > field->array_size)
+
+    if (PB_ATYPE(field->type) != PB_ATYPE_POINTER && count > field->array_size)
         PB_RETURN_ERROR(stream, "array max size exceeded");
     
     /* We always pack arrays if the datatype allows it. */
@@ -170,8 +170,19 @@ static bool checkreturn encode_array(pb_ostream_t *stream, const pb_field_t *fie
         {
             if (!pb_encode_tag_for_field(stream, field))
                 return false;
-            if (!func(stream, field, p))
-                return false;
+
+            /* Special case for strings */
+            if (PB_ATYPE(field->type) == PB_ATYPE_POINTER &&
+                PB_LTYPE(field->type) == PB_LTYPE_STRING)
+            {
+                if (!func(stream, field, *(const void**)p))
+                    return false;      
+            }
+            else
+            {
+                if (!func(stream, field, p))
+                    return false;
+            }
             p = (const char*)p + field->data_size;
         }
     }
@@ -192,12 +203,19 @@ static bool checkreturn encode_static_field(pb_ostream_t *stream,
     
     if (field->size_offset)
         pSize = (const char*)pData + field->size_offset;
+    else if (PB_ATYPE(field->type) == PB_ATYPE_POINTER)
+        pSize = *(const void**)pData ? &dummy : pData;
     else
         pSize = &dummy;
-    
+
+    if (PB_ATYPE(field->type) == PB_ATYPE_POINTER)
+        pData = *(const void**)pData;
+
     switch (PB_HTYPE(field->type))
     {
         case PB_HTYPE_REQUIRED:
+            if (!pData)
+                return false;
             if (!pb_encode_tag_for_field(stream, field))
                 return false;
             if (!func(stream, field, pData))
@@ -255,6 +273,7 @@ static bool checkreturn encode_field(pb_ostream_t *stream,
     switch (PB_ATYPE(field->type))
     {
         case PB_ATYPE_STATIC:
+        case PB_ATYPE_POINTER:
             return encode_static_field(stream, field, pData);
         
         case PB_ATYPE_CALLBACK:
@@ -312,7 +331,10 @@ bool checkreturn pb_encode(pb_ostream_t *stream, const pb_field_t fields[], cons
     while (field->tag != 0)
     {
         pData = (const char*)pData + prev_size + field->data_offset;
-        prev_size = field->data_size;
+        if (PB_ATYPE(field->type) == PB_ATYPE_POINTER)
+            prev_size = sizeof(const void*);
+        else
+            prev_size = field->data_size;
         
         /* Special case for static arrays */
         if (PB_ATYPE(field->type) == PB_ATYPE_STATIC &&
@@ -550,10 +572,17 @@ bool checkreturn pb_enc_bytes(pb_ostream_t *stream, const pb_field_t *field, con
 {
     const pb_bytes_array_t *bytes = (const pb_bytes_array_t*)src;
 
-    if (bytes->size + offsetof(pb_bytes_array_t, bytes) > field->data_size)
-        PB_RETURN_ERROR(stream, "bytes size exceeded");
-    
-    return pb_encode_string(stream, bytes->bytes, bytes->size);
+    if (PB_ATYPE(field->type) == PB_ATYPE_POINTER)
+    {
+        return pb_encode_string(stream, *(const uint8_t**)bytes->bytes, bytes->size);
+    }
+    else
+    {
+        if (bytes->size + offsetof(pb_bytes_array_t, bytes) > field->data_size)
+            PB_RETURN_ERROR(stream, "bytes size exceeded");
+
+        return pb_encode_string(stream, bytes->bytes, bytes->size);
+    }
 }
 
 bool checkreturn pb_enc_string(pb_ostream_t *stream, const pb_field_t *field, const void *src)
@@ -561,12 +590,22 @@ bool checkreturn pb_enc_string(pb_ostream_t *stream, const pb_field_t *field, co
     /* strnlen() is not always available, so just use a for-loop */
     size_t size = 0;
     const char *p = (const char*)src;
-    while (size < field->data_size && *p != '\0')
+    if (PB_ATYPE(field->type) == PB_ATYPE_POINTER)
     {
-        size++;
-        p++;
+        while (*p != '\0')
+        {
+            size++;
+            p++;
+        }
     }
-
+    else
+    {
+        while (size < field->data_size && *p != '\0')
+        {
+            size++;
+            p++;
+        }
+    }
     return pb_encode_string(stream, (const uint8_t*)src, size);
 }
 
