@@ -1,0 +1,3 @@
+Due to Google Code closing down, nanopb is now hosted on GitHub:
+https://github.com/nanopb/nanopb
+

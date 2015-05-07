@@ -1,3 +1,9 @@
+2015-05-07: Repository has moved to GitHub.
+            This checkout is from outdated Google Code repository
+
+
+
+
 nanopb-0.3.3 (2015-04-xx)
  Fix missing files in Linux binary package (issue 146)
  Fix generator bug when oneof is first field in a message. (issue 142)
